@@ -49,6 +49,7 @@
 (org-export-define-backend 'html
   '((bold . org-html-bold)
     (center-block . org-html-center-block)
+    (citation . org-html-citation)
     (clock . org-html-clock)
     (code . org-html-code)
     (drawer . org-html-drawer)
@@ -1090,10 +1091,10 @@ linebreaks    Let MathJax perform automatic linebreaks.  Valid values
 indent        If align is not center, how far from the left/right side?
               Valid values are \"left\" and \"right\"
 multlinewidth The width of the multline environment.
-autonumber    How to number equations.  Valid values are \"None\", 
+autonumber    How to number equations.  Valid values are \"None\",
               \"all\" and \"AMS Math\".
 tagindent     The amount tags are indented.
-tagside       Which side to show tags/labels on.  Valid values are 
+tagside       Which side to show tags/labels on.  Valid values are
               \"left\" and \"right\"
 
 You can also customize this for each buffer, using something like
@@ -2226,6 +2227,15 @@ CONTENTS holds the contents of the block.  INFO is a plist
 holding contextual information."
   (format "<div class=\"center\">\n%s</div>" contents))
 
+;;;; Citation
+
+(defun org-html-citation (citation contents info)
+  ;; TODO: there's probably some voodoo related to whether a span is
+  ;; allowed to contain a block element, in case this is a full
+  ;; citation.
+  (format "<span class=\"in-text-citation\">%s</span>"
+	  (org-export-cite-format-citation citation contents info)))
+
 ;;;; Clock
 
 (defun org-html-clock (clock contents info)
@@ -2577,7 +2587,10 @@ CONTENTS is nil.  INFO is a plist holding contextual information."
 		(localp (org-string-match-p "\\<local\\>" value)))
 	    (org-html-toc depth info (and localp keyword))))
 	 ((string= "listings" value) (org-html-list-of-listings info))
-	 ((string= "tables" value) (org-html-list-of-tables info))))))))
+	 ((string= "tables" value) (org-html-list-of-tables info)))))
+     ((string= key "BIBLIOGRAPHY")
+      (format "<div class=\"bibliography\">%s</div>"
+	      (org-export-cite-format-bibliography info))))))
 
 ;;;; Latex Environment
 

@@ -2916,6 +2916,8 @@ Return code as a string."
 	 (setq tree
 	       (org-export-filter-apply-functions
 		(plist-get info :filter-parse-tree) tree info))
+	 ;; Add the bibliography database to the info
+	 (setq info (org-export-cite-prepare tree info))
 	 ;; Now tree is complete, compute its properties and add them
 	 ;; to communication channel.
 	 (setq info

@@ -47,6 +47,7 @@
 (org-export-define-backend 'ascii
   '((bold . org-ascii-bold)
     (center-block . org-ascii-center-block)
+    (citation . org-ascii-citation)
     (clock . org-ascii-clock)
     (code . org-ascii-code)
     (comment . (lambda (&rest args) ""))
@@ -1151,6 +1152,12 @@ holding contextual information."
   contents)
 
 
+;;;; Citation
+
+(defun org-ascii-citation (citation contents info)
+  (org-export-cite-format-citation citation contents info))
+
+
 ;;;; Clock
 
 (defun org-ascii-clock (clock contents info)
@@ -1483,7 +1490,9 @@ information."
 	   (org-ascii--list-tables keyword info))
 	  ((org-string-match-p "\\<listings\\>" value)
 	   (org-ascii--list-listings keyword info))))
-       keyword info)))))
+       keyword info))
+     ((string= key "BIBLIOGRAPHY")
+      (org-export-cite-format-bibliography info)))))
 
 
 ;;;; Latex Environment
