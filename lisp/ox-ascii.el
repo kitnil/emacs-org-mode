@@ -1155,7 +1155,7 @@ holding contextual information."
 ;;;; Citation
 
 (defun org-ascii-citation (citation contents info)
-  (org-export-cite-format-citation citation contents info))
+  (org-cite-format-citation citation contents info))
 
 
 ;;;; Clock
@@ -1492,7 +1492,7 @@ information."
 	   (org-ascii--list-listings keyword info))))
        keyword info))
      ((string= key "BIBLIOGRAPHY")
-      (org-export-cite-format-bibliography info)))))
+      (org-cite-format-bibliography info)))))
 
 
 ;;;; Latex Environment

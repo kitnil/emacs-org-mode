@@ -1362,7 +1362,7 @@ holding contextual information."
 ;;;; Citation
 
 (defun org-latex-citation (citation contents info)
-  (org-export-cite-format-citation citation contents info))
+  (org-cite-format-citation citation contents info))
 
 
 ;;;; Clock
@@ -1853,7 +1853,7 @@ CONTENTS is nil.  INFO is a plist holding contextual information."
 	    (minted "\\listoflistings")
 	    (otherwise "\\lstlistoflistings"))))))
      ((string= key "BIBLIOGRAPHY")
-      (org-export-cite-format-bibliography info)))))
+      (org-cite-format-bibliography info)))))
 
 
 ;;;; Latex Environment
