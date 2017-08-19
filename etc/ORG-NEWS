@@ -1,5 +1,7 @@
 ORG NEWS -- history of user-visible changes.   -*- mode: org; coding: utf-8 -*-
 
+#+STARTUP: overview
+
 #+LINK: doc http://orgmode.org/worg/doc.html#%s
 #+LINK: git http://orgmode.org/cgit.cgi/org-mode.git/commit/?id=%s
 
@@ -104,6 +106,19 @@ See [[https://github.com/ensime/emacs-scala-mode/issues/114][this github issue]]
 
 You can use =ob-scala.el= as packaged in scala-mode, available from the
 MELPA repository.
+
+*** =align= STARTUP value no longer narrow table columns
+
+Columns narrowing (or shrinking) is now dynamic. See [[*Dynamically
+narrow table columns]] for details. In particular, it is decoupled from
+aligning.
+
+If you need to automatically shrink columns upon opening an Org
+document, use =shrink= value instead, or in addition to align:
+
+#+BEGIN_EXAMPLE
+,#+STARTUP: align shrink
+#+END_EXAMPLE
 
 ** New features
 *** iCalendar export uses inheritance for TIMEZONE and LOCATION properties
@@ -341,6 +356,20 @@ This variable allow computed durations in tables to be zero-padded.
 
 *** New mode switch for table formulas : =U=
 This mode omits seconds in durations.
+
+*** Dynamically narrow table columns
+
+With ~C-c TAB~, it is now possible to narrow a column to the width
+specified by a width cookie in the column, or to 1 character if there
+is no such cookie.  The same keybinding expands a narrowed column to
+its previous state.
+
+Editing the column automatically expands the whole column to its full
+size.
+
+#+BEGIN_EXAMPLE
+,#+STARTUP: shrink
+#+END_EXAMPLE
 
 ** Removed functions
 
