@@ -4418,7 +4418,7 @@ This is needed for font-lock setup.")
 		  (newhead hdmarker &optional fixface just-this))
 (declare-function org-agenda-check-for-timestamp-as-reason-to-ignore-todo-item
 		  "org-agenda"
-		  (&optional end))
+		  (&optional scheduled deadline timestamp))
 (declare-function org-agenda-copy-local-variable "org-agenda" (var))
 (declare-function org-agenda-format-item
 		  "org-agenda"
