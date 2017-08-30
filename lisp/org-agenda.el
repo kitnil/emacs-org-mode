@@ -4385,68 +4385,6 @@ keyword.  HEADLINE is the full headline."
 	     result)))
     result))
 
-(defun org-agenda--entry-from-log (date datum)
-  "Return agenda entry for DATE associated to log data.
-
-DATE is a list of the form (MONTH DAY YEAR).  DATUM is a list of
-the form (POS TYPE TIMESTAMP EXTRA).  POS is the location of the
-log data.  TYPE is `clock', `closed' or `state'.  TIMESTAMP the
-clock or closed timestamp, or nil.  EXTRA is the TODO state,
-a clock duration, or nil.
-
-Throw `:skip' if no entry is associated to DATUM at DATE."
-  (pcase-let* ((`(,pos ,type ,timestamp ,extra) datum)
-	       (org-agenda-search-headline-for-time nil))
-    (goto-char pos)
-    (let ((notes
-	   (cond ((not org-agenda-log-mode-add-notes) nil)
-		 ((eq type 'state)
-		  (and (looking-at ".*\\\\\n[ \t]*\\([^-\n \t].*?\\)[ \t]*$")
-		       (match-string 1)))
-		 ((eq type 'clock)
-		  (and (looking-at ".*\n[ \t]*-[ \t]+\\([^-\n \t].*?\\)[ \t]*$")
-		       (match-string 1)))
-		 (t nil))))
-      (save-excursion
-	(re-search-backward "^\\*+[ \t]+" nil t)
-	(goto-char (match-end 0))
-	(let* ((marker (org-agenda-new-marker pos))
-	       (hdmarker (org-agenda-new-marker (line-beginning-position)))
-	       (category (org-get-category))
-	       (level (make-string (org-reduced-level (org-outline-level))
-				   ?\s))
-	       (tags (org-agenda--get-tags 'todo))
-	       (headline (buffer-substring (point) (line-end-position)))
-	       (item
-		(org-agenda-format-item
-		 (pcase type
-		   (`closed "Closed:    ")
-		   (`state (format "State:     (%s)" extra))
-		   (_ (format "Clocked:   (%s)" (or extra "-"))))
-		 (cond
-		  ((not notes) headline)
-		  ((string-match "[ \t]+\\(:[^ \n\t]*?:\\)[ \t]*$" headline)
-		   (replace-match (format " - %s \\1" notes) nil nil headline 1))
-		  (t (concat headline " - " notes)))
-		 level category tags timestamp)))
-	  (org-add-props item nil
-	    'date date
-	    'done-face 'org-agenda-done
-	    'face 'org-agenda-done
-	    'help-echo (format "mouse-2 or RET jump to Org file %S"
-			       (abbreviate-file-name
-				(buffer-file-name (buffer-base-buffer))))
-	    'level level
-	    'mouse-face 'highlight
-	    'org-complex-heading-regexp org-complex-heading-regexp
-	    'org-hd-marker hdmarker
-	    'org-marker marker
-	    'org-not-done-regexp org-not-done-regexp
-	    'org-todo-regexp org-todo-regexp
-	    'priority 100000
-	    'type "closed"
-	    'undone-face 'org-warning))))))
-
 (defun org-agenda--entry-from-deadline (date datum with-hour)
   "Return agenda entry for DATE associated to a deadline.
 
@@ -4537,61 +4475,57 @@ Throw `:skip' if no entry is associated to DATUM at DATE."
 		 (or org-agenda-skip-deadline-if-done
 		     (/= deadline current)))
 	(throw :skip nil))
-      (save-excursion
-	(re-search-backward "^\\*+[ \t]+" nil t)
-	(goto-char (match-end 0))
-	(let* ((category (org-get-category))
-	       (level (make-string (org-reduced-level (org-outline-level))
-				   ?\s))
-	       (head (buffer-substring (point) (line-end-position)))
-	       (tags (org-agenda--get-tags 'agenda))
-	       (time
-		(cond
-		 ;; No time of day designation if it is only
-		 ;; a reminder.
-		 ((and (/= current deadline) (/= current repeat)) nil)
-		 ((string-match " \\([012]?[0-9]:[0-9][0-9]\\)" base)
-		  (concat (substring base (match-beginning 1)) " "))
-		 (t 'time)))
-	       (item
-		(org-agenda-format-item
-		 ;; Insert appropriate suffixes before deadlines.
-		 ;; Those only apply to today agenda.
-		 (pcase-let ((`(,now ,next ,past) org-agenda-deadline-leaders))
-		   (cond
-		    ((and today? (< deadline today)) (format past (- diff)))
-		    ((and today? (> deadline today)) (format next diff))
-		    (t now)))
-		 head level category tags time))
-	       (face (org-agenda-deadline-face
-		      (- 1 (/ (float diff) (max wdays 1)))))
-	       (upcoming? (and today? (> deadline today)))
-	       (warntime (get-text-property (point) 'org-appt-warntime)))
-	  (org-add-props item nil
-	    'date (if upcoming? date deadline)
-	    'done-face 'org-agenda-done
-	    'face (if done? 'org-agenda-done face)
-	    'help-echo (format "mouse-2 or RET jump to Org file %S"
-			       (abbreviate-file-name
-				(buffer-file-name (buffer-base-buffer))))
-	    'level level
-	    'mouse-face 'highlight
-	    'org-complex-heading-regexp org-complex-heading-regexp
-	    'org-hd-marker (org-agenda-new-marker (line-beginning-position))
-	    'org-marker (org-agenda-new-marker pos)
-	    'org-not-done-regexp org-not-done-regexp
-	    'org-todo-regexp org-todo-regexp
-	    ;; Adjust priority to today reminders about deadlines.
-	    ;; Overdue deadlines get the highest priority increase,
-	    ;; then imminent deadlines and eventually more distant
-	    ;; deadlines.
-	    'priority (let ((adjust (if today? (- diff) 0)))
-			(+ adjust (org-get-priority item)))
-	    'todo-state todo-state
-	    'ts-date deadline
-	    'type (if upcoming? "upcoming-deadline" "deadline")
-	    'undone-face face
-	    'warntime warntime))))))
+      (re-search-backward org-todo-line-regexp nil t)
+      (let* ((level (make-string (org-reduced-level (length (match-string 1)))
+				 ?\s))
+	     (head (match-string 3))(category (org-get-category))
+	     (tags (org-agenda--get-tags 'agenda))
+	     (time
+	      (cond
+	       ;; No time of day designation if it is only
+	       ;; a reminder.
+	       ((and (/= current deadline) (/= current repeat)) nil)
+	       ((string-match " \\([012]?[0-9]:[0-9][0-9]\\)" base)
+		(concat (substring base (match-beginning 1)) " "))
+	       (t 'time)))
+	     (item
+	      (org-agenda-format-item
+	       ;; Insert appropriate suffixes before deadlines.  Those
+	       ;; only apply to today agenda.
+	       (pcase-let ((`(,now ,next ,past) org-agenda-deadline-leaders))
+		 (cond
+		  ((and today? (< deadline today)) (format past (- diff)))
+		  ((and today? (> deadline today)) (format next diff))
+		  (t now)))
+	       head level category tags time))
+	     (face (org-agenda-deadline-face
+		    (- 1 (/ (float diff) (max wdays 1)))))
+	     (upcoming? (and today? (> deadline today)))
+	     (warntime (get-text-property (point) 'org-appt-warntime)))
+	(org-add-props item nil
+	  'date (if upcoming? date deadline)
+	  'done-face 'org-agenda-done
+	  'face (if done? 'org-agenda-done face)
+	  'help-echo (format "mouse-2 or RET jump to Org file %S"
+			     (abbreviate-file-name
+			      (buffer-file-name (buffer-base-buffer))))
+	  'level level
+	  'mouse-face 'highlight
+	  'org-complex-heading-regexp org-complex-heading-regexp
+	  'org-hd-marker (org-agenda-new-marker (line-beginning-position))
+	  'org-marker (org-agenda-new-marker pos)
+	  'org-not-done-regexp org-not-done-regexp
+	  'org-todo-regexp org-todo-regexp
+	  ;; Adjust priority to today reminders about deadlines.
+	  ;; Overdue deadlines get the highest priority increase, then
+	  ;; imminent deadlines and eventually more distant deadlines.
+	  'priority (let ((adjust (if today? (- diff) 0)))
+		      (+ adjust (org-get-priority item)))
+	  'todo-state todo-state
+	  'ts-date deadline
+	  'type (if upcoming? "upcoming-deadline" "deadline")
+	  'undone-face face
+	  'warntime warntime)))))
 
 (defun org-agenda--entry-from-diary (date datum)
   "Return diary entries for DATE associated to a diary S-exp entry.
@@ -4640,6 +4574,66 @@ a list of strings."
 		entries)))
       entries)))
 
+(defun org-agenda--entry-from-log (date datum)
+  "Return agenda entry for DATE associated to log data.
+
+DATE is a list of the form (MONTH DAY YEAR).  DATUM is a list of
+the form (POS TYPE TIMESTAMP EXTRA).  POS is the location of the
+log data.  TYPE is `clock', `closed' or `state'.  TIMESTAMP the
+clock or closed timestamp, or nil.  EXTRA is the TODO state,
+a clock duration, or nil.
+
+Throw `:skip' if no entry is associated to DATUM at DATE."
+  (pcase-let ((`(,pos ,type ,timestamp ,extra) datum)
+	      (org-agenda-search-headline-for-time nil))
+    (goto-char pos)
+    (let ((notes
+	   (cond ((not org-agenda-log-mode-add-notes) nil)
+		 ((eq type 'state)
+		  (and (looking-at ".*\\\\\n[ \t]*\\([^-\n \t].*?\\)[ \t]*$")
+		       (match-string 1)))
+		 ((eq type 'clock)
+		  (and (looking-at ".*\n[ \t]*-[ \t]+\\([^-\n \t].*?\\)[ \t]*$")
+		       (match-string 1)))
+		 (t nil))))
+      (re-search-backward org-todo-line-regexp nil t)
+      (let* ((headline (match-string 3))
+	     (level (make-string (org-reduced-level (length (match-string 1)))
+				 ?\s))
+	     (marker (org-agenda-new-marker pos))
+	     (hdmarker (org-agenda-new-marker (line-beginning-position)))
+	     (category (org-get-category))
+	     (tags (org-agenda--get-tags 'todo))
+	     (item
+	      (org-agenda-format-item
+	       (pcase type
+		 (`closed "Closed:    ")
+		 (`state (format "State:     (%s)" extra))
+		 (_ (format "Clocked:   (%s)" (or extra "-"))))
+	       (cond
+		((not notes) headline)
+		((string-match "[ \t]+\\(:[^ \n\t]*?:\\)[ \t]*$" headline)
+		 (replace-match (format " - %s \\1" notes) nil nil headline 1))
+		(t (concat headline " - " notes)))
+	       level category tags timestamp)))
+	(org-add-props item nil
+	  'date date
+	  'done-face 'org-agenda-done
+	  'face 'org-agenda-done
+	  'help-echo (format "mouse-2 or RET jump to Org file %S"
+			     (abbreviate-file-name
+			      (buffer-file-name (buffer-base-buffer))))
+	  'level level
+	  'mouse-face 'highlight
+	  'org-complex-heading-regexp org-complex-heading-regexp
+	  'org-hd-marker hdmarker
+	  'org-marker marker
+	  'org-not-done-regexp org-not-done-regexp
+	  'org-todo-regexp org-todo-regexp
+	  'priority 100000
+	  'type "closed"
+	  'undone-face 'org-warning)))))
+
 (defun org-agenda--entry-from-range (date data)
   "Return agenda entry for DATE associated to a time-stamp range.
 
@@ -4655,22 +4649,21 @@ Throw `:skip' if no entry is associated to DATA at DATE."
 	       (start (org-agenda--timestamp-to-absolute
 		       start-stamp nil nil (current-buffer) pos))
 	       (end (org-agenda--timestamp-to-absolute
-		     end-stamp nil nil (current-buffer) pos))
-	       (todo-state nil))
+		     end-stamp nil nil (current-buffer) pos)))
     (goto-char pos)
+    ;; Discard range if DATE is outside.
     (when (or (< current start) (> current end))
-      ;; DATE is outside the range.
       (throw :skip nil))
-    (setq todo-state (org-get-todo-state))
-    (when (and org-agenda-skip-timestamp-if-done
-	       (member todo-state org-done-keywords))
-      (throw :skip nil))
-    (save-excursion
-      (re-search-backward org-outline-regexp-bol nil t)
+    (re-search-backward org-todo-line-regexp nil t)
+    (let ((todo-state (match-string 2))
+	  (head (match-string 3))
+	  (level (make-string (org-reduced-level (length (match-string 1)))
+			      ?\s)))
+      (when (and org-agenda-skip-timestamp-if-done
+		 (member todo-state org-done-keywords))
+	(throw :skip nil))
       ;; Format entry as a return value.
       (let* ((category (org-get-category pos))
-	     (head (progn (looking-at "\\*+[ \t]+\\(.*\\)")
-			  (match-string 1)))
 	     (remove-re (and org-agenda-remove-timeranges-from-blocks
 			     (format "<%s.*?>--<%s.*?>"
 				     (regexp-quote start-stamp)
@@ -4679,8 +4672,6 @@ Throw `:skip' if no entry is associated to DATA at DATE."
 	     (hdmarker (org-agenda-new-marker (point)))
 	     (category (org-get-category))
 	     (tags (org-agenda--get-tags 'agenda))
-	     (level (make-string (org-reduced-level (org-outline-level))
-				 ?\s))
 	     (item (org-agenda-format-item
 		    (format (nth (if (= start end) 0 1)
 				 org-agenda-timerange-leaders)
@@ -4745,8 +4736,8 @@ Throw `:skip' if no entry is associated to DATUM at DATE."
 	     (t (org-agenda--timestamp-to-absolute base))))
 	   ;; REPEAT is the future repeat closest from CURRENT,
 	   ;; according to `org-agenda-show-future-repeats'. If the
-	   ;; latter is nil, or if the time stamp has no repeat
-	   ;; part, default to SCHEDULE.
+	   ;; latter is nil, or if the time stamp has no repeat part,
+	   ;; default to SCHEDULE.
 	   (repeat
 	    (cond
 	     (sexp? schedule)
@@ -4791,8 +4782,8 @@ Throw `:skip' if no entry is associated to DATUM at DATE."
 	     (t (org-get-wdays base t)))))
       ;; Display scheduled items at base date (SCHEDULE), today if
       ;; scheduled before the current date, and at any repeat past
-      ;; today.  However, skip delayed items and items that have
-      ;; been displayed for more than `org-scheduled-past-days'.
+      ;; today.  However, skip delayed items and items that have been
+      ;; displayed for more than `org-scheduled-past-days'.
       (unless (and today?
 		   habit?
 		   (bound-and-true-p org-habit-show-all-today))
@@ -4824,8 +4815,8 @@ Throw `:skip' if no entry is associated to DATUM at DATE."
 	      (`t t)
 	      (_ nil))
 	(throw :skip nil))
-      ;; Skip habits if `org-habit-show-habits' is nil, or if we
-      ;; only show them for today.  Also skip done habits.
+      ;; Skip habits if `org-habit-show-habits' is nil, or if we only
+      ;; show them for today.  Also skip done habits.
       (when (and habit?
 		 (or done?
 		     (not (bound-and-true-p org-habit-show-habits))
@@ -4833,57 +4824,56 @@ Throw `:skip' if no entry is associated to DATUM at DATE."
 			  (bound-and-true-p
 			   org-habit-show-habits-only-for-today))))
 	(throw :skip nil))
-      (save-excursion
-	(re-search-backward "^\\*+[ \t]+" nil t)
-	(goto-char (match-end 0))
-	(let* ((category (org-get-category))
-	       (tags (org-agenda--get-tags 'agenda))
-	       (level (make-string (org-reduced-level (org-outline-level))
-				   ?\s))
-	       (head (buffer-substring (point) (line-end-position)))
-	       (time
-		(cond
-		 ;; No time of day designation if it is only
-		 ;; a reminder.
-		 ((and (/= current schedule) (/= current repeat)) nil)
-		 ((string-match " \\([012]?[0-9]:[0-9][0-9]\\)" base)
-		  (concat (substring base (match-beginning 1)) " "))
-		 (t 'time)))
-	       (item
-		(org-agenda-format-item
-		 (pcase-let ((`(,first ,past) org-agenda-scheduled-leaders))
-		   ;; Show a reminder of a past scheduled today.
-		   (if (and today? pastschedp)
-		       (format past diff)
-		     first))
-		 head level category tags time nil habit?))
-	       (face (cond ((and (not habit?) pastschedp)
-			    'org-scheduled-previously)
-			   (today? 'org-scheduled-today)
-			   (t 'org-scheduled)))
-	       (habit? (and habit? (org-habit-parse-todo))))
-	  (org-add-props item nil
-	    'date (if pastschedp schedule date)
-	    'done-face 'org-agenda-done
-	    'face (if done? 'org-agenda-done face)
-	    'help-echo (format "mouse-2 or RET jump to Org file %S"
-			       (abbreviate-file-name
-				(buffer-file-name (buffer-base-buffer))))
-	    'level level
-	    'mouse-face 'highlight
-	    'org-complex-heading-regexp org-complex-heading-regexp
-	    'org-habit-p habit?
-	    'org-hd-marker (org-agenda-new-marker (line-beginning-position))
-	    'org-marker (org-agenda-new-marker pos)
-	    'org-not-done-regexp org-not-done-regexp
-	    'org-todo-regexp org-todo-regexp
-	    'priority (if habit? (org-habit-get-priority habit?)
-			(+ 99 diff (org-get-priority item)))
-	    'todo-state todo-state
-	    'ts-date schedule
-	    'type (if pastschedp "past-scheduled" "scheduled")
-	    'undone-face face
-	    'warntime warntime))))))
+      (re-search-backward org-todo-line-regexp nil t)
+      (let* ((todo-state (match-string 2))
+	     (head (match-string 3))
+	     (level (make-string (org-reduced-level (length (match-string 1)))
+				 ?\s))
+	     (category (org-get-category))
+	     (tags (org-agenda--get-tags 'agenda))
+	     (time
+	      (cond
+	       ;; No time of day designation if it is only
+	       ;; a reminder.
+	       ((and (/= current schedule) (/= current repeat)) nil)
+	       ((string-match " \\([012]?[0-9]:[0-9][0-9]\\)" base)
+		(concat (substring base (match-beginning 1)) " "))
+	       (t 'time)))
+	     (item
+	      (org-agenda-format-item
+	       (pcase-let ((`(,first ,past) org-agenda-scheduled-leaders))
+		 ;; Show a reminder of a past scheduled today.
+		 (if (and today? pastschedp)
+		     (format past diff)
+		   first))
+	       head level category tags time nil habit?))
+	     (face (cond ((and (not habit?) pastschedp)
+			  'org-scheduled-previously)
+			 (today? 'org-scheduled-today)
+			 (t 'org-scheduled)))
+	     (habit? (and habit? (org-habit-parse-todo))))
+	(org-add-props item nil
+	  'date (if pastschedp schedule date)
+	  'done-face 'org-agenda-done
+	  'face (if done? 'org-agenda-done face)
+	  'help-echo (format "mouse-2 or RET jump to Org file %S"
+			     (abbreviate-file-name
+			      (buffer-file-name (buffer-base-buffer))))
+	  'level level
+	  'mouse-face 'highlight
+	  'org-complex-heading-regexp org-complex-heading-regexp
+	  'org-habit-p habit?
+	  'org-hd-marker (org-agenda-new-marker (line-beginning-position))
+	  'org-marker (org-agenda-new-marker pos)
+	  'org-not-done-regexp org-not-done-regexp
+	  'org-todo-regexp org-todo-regexp
+	  'priority (if habit? (org-habit-get-priority habit?)
+		      (+ 99 diff (org-get-priority item)))
+	  'todo-state todo-state
+	  'ts-date schedule
+	  'type (if pastschedp "past-scheduled" "scheduled")
+	  'undone-face face
+	  'warntime warntime)))))
 
 (defun org-agenda--entry-from-timestamp (date datum deadlines)
   "Return agenda entry for DATE associated to a time-stamp.
@@ -4894,95 +4884,97 @@ string TIMESTAMP, a time-stamp.  DEADLINES is a list of positions
 for deadlines displayed in the agenda.
 
 Throw `:skip' if no entry is associated to DATUM at DATE."
-  (pcase-let ((`(,pos ,_ ,time-stamp) datum))
+  (pcase-let* ((`(,pos ,_ ,time-stamp) datum)
+	       (current (calendar-absolute-from-gregorian date))
+	       (type (cond ((string-prefix-p "<%%" time-stamp) 'sexp)
+			   ((org-get-repeat time-stamp) 'repeat)
+			   (t 'plain))))
     (goto-char pos)
-    (let ((current (calendar-absolute-from-gregorian date))
-	  (todo-state (org-get-todo-state)))
-      (cond
-       ((and org-agenda-skip-timestamp-if-done
-	     (member todo-state org-done-keywords))
-	;; Possibly skip DONE tasks.
+    ;; Possibly skip time-stamp when a deadline is set.
+    (when (and org-agenda-skip-timestamp-if-deadline-is-shown
+	       (assq (point) deadlines))
+      (throw :skip nil))
+    ;; Discard plain timestamps not matching CURRENT.
+    (when (and (eq type 'plain)
+	       (pcase-let ((`(,month ,day ,year) date))
+		 (not (string-prefix-p (format "<%d-%02d-%02d" year month day)
+				       time-stamp))))
+      (throw :skip nil))
+    (re-search-backward org-todo-line-regexp nil t)
+    (let ((todo-state (match-string 2))
+	  (level (make-string (org-reduced-level (length (match-string 1)))
+			      ?\s))
+	  (head (match-string 3)))
+      ;; Possibly skip DONE tasks.
+      (when (and org-agenda-skip-timestamp-if-done
+		 (member todo-state org-done-keywords))
 	(throw :skip nil))
-       ((string-prefix-p "<%%" time-stamp) ;s-exp timestamp
-	(let ((sexp (substring time-stamp 3 -1)))
-	  (unless (org-diary-sexp-entry sexp "" date)
-	    ;; S-exp entry doesn't match current day: skip it.
-	    (throw :skip nil))))
-       ((org-get-repeat time-stamp)	;time-stamp with a repeater
-	(let* ((today (org-today))
-	       (past
-		;; A repeating time stamp is shown at its base date
-		;; and every repeated date up to TODAY.  If
-		;; `org-agenda-prefer-last-repeat' is non-nil,
-		;; however, only the last repeat before today
-		;; (inclusive) is shown.
-		(org-agenda--timestamp-to-absolute
-		 time-stamp
-		 (if (or (> current today)
-			 (eq org-agenda-prefer-last-repeat t)
-			 (member todo-state org-agenda-prefer-last-repeat))
-		     today
-		   current)
-		 'past (current-buffer) pos))
-	       (future
-		;;  Display every repeated date past TODAY (exclusive)
-		;;  unless `org-agenda-show-future-repeats' is nil.
-		;;  If this variable is set to `next', only display
-		;;  the first repeated date after TODAY (exclusive).
-		(cond
-		 ((<= current today) past)
-		 ((not org-agenda-show-future-repeats) past)
-		 (t
-		  (let ((base (if (eq org-agenda-show-future-repeats 'next)
-				  (1+ today)
-				current)))
-		    (org-agenda--timestamp-to-absolute
-		     time-stamp base 'future (current-buffer) pos))))))
-	  (when (and (/= current past) (/= current future))
-	    (throw :skip nil))))
-       (t				;plain time-stamp
-	(pcase-let ((`(,month ,day ,year) date))
-	  (unless (string-prefix-p (format "<%d-%02d-%02d" year month day)
-				   time-stamp)
-	    (throw :skip nil)))))
-      (save-excursion
-	(re-search-backward org-outline-regexp-bol nil t)
-	;; Possibly skip time-stamp when a deadline is set.
-	(when (and org-agenda-skip-timestamp-if-deadline-is-shown
-		   (assq (point) deadlines))
-	  (throw :skip nil))
-	(let* ((category (org-get-category pos))
-	       (tags (org-agenda--get-tags 'agenda))
-	       (level (make-string (org-reduced-level (org-outline-level))
-				   ?\s))
-	       (head (and (looking-at "\\*+[ \t]+\\(.*\\)")
-			  (match-string 1)))
-	       (habit? (and (fboundp 'org-is-habit-p) (org-is-habit-p)))
-	       (item (org-agenda-format-item
-		      nil head level category tags time-stamp org-ts-regexp
-		      habit?)))
-	  (org-add-props item nil
-	    'date date
-	    'face 'org-agenda-calendar-event
-	    'help-echo (format "mouse-2 or RET jump to Org file %S"
-			       (abbreviate-file-name
-				(buffer-file-name (buffer-base-buffer))))
-	    'level level
-	    'mouse-face 'highlight
-	    'org-complex-heading-regexp org-complex-heading-regexp
-	    'org-hd-marker (org-agenda-new-marker)
-	    'org-marker (org-agenda-new-marker pos)
-	    'org-not-done-regexp org-not-done-regexp
-	    'org-todo-regexp org-todo-regexp
-	    'priority (if habit?
-			  (org-habit-get-priority (org-habit-parse-todo))
-			(org-get-priority item))
-	    'todo-state todo-state
-	    'ts-date (if time-stamp
-			 (org-agenda--timestamp-to-absolute time-stamp)
-		       current)
-	    'type "timestamp"
-	    'warntime (get-text-property (point) 'org-appt-warntime)))))))
+      (pcase type
+	(`sexp
+	 (let ((sexp (substring time-stamp 3 -1)))
+	   (unless (org-diary-sexp-entry sexp "" date)
+	     ;; S-exp entry doesn't match current day: skip it.
+	     (throw :skip nil))))
+	(`repeat
+	 (let* ((today (org-today))
+		(past
+		 ;; A repeating time stamp is shown at its base date
+		 ;; and every repeated date up to TODAY.  If
+		 ;; `org-agenda-prefer-last-repeat' is non-nil,
+		 ;; however, only the last repeat before today
+		 ;; (inclusive) is shown.
+		 (org-agenda--timestamp-to-absolute
+		  time-stamp
+		  (if (or (> current today)
+			  (eq org-agenda-prefer-last-repeat t)
+			  (member todo-state org-agenda-prefer-last-repeat))
+		      today
+		    current)
+		  'past (current-buffer) pos))
+		(future
+		 ;; Display every repeated date past TODAY (exclusive)
+		 ;; unless `org-agenda-show-future-repeats' is nil.
+		 ;; If this variable is set to `next', only display
+		 ;; the first repeated date after TODAY (exclusive).
+		 (cond
+		  ((<= current today) past)
+		  ((not org-agenda-show-future-repeats) past)
+		  (t
+		   (let ((base (if (eq org-agenda-show-future-repeats 'next)
+				   (1+ today)
+				 current)))
+		     (org-agenda--timestamp-to-absolute
+		      time-stamp base 'future (current-buffer) pos))))))
+	   (when (and (/= current past) (/= current future))
+	     (throw :skip nil)))))
+      (let* ((category (org-get-category pos))
+	     (tags (org-agenda--get-tags 'agenda))
+	     (habit? (and (fboundp 'org-is-habit-p) (org-is-habit-p)))
+	     (item
+	      (org-agenda-format-item
+	       nil head level category tags time-stamp org-ts-regexp habit?)))
+	(org-add-props item nil
+	  'date date
+	  'face 'org-agenda-calendar-event
+	  'help-echo (format "mouse-2 or RET jump to Org file %S"
+			     (abbreviate-file-name
+			      (buffer-file-name (buffer-base-buffer))))
+	  'level level
+	  'mouse-face 'highlight
+	  'org-complex-heading-regexp org-complex-heading-regexp
+	  'org-hd-marker (org-agenda-new-marker)
+	  'org-marker (org-agenda-new-marker pos)
+	  'org-not-done-regexp org-not-done-regexp
+	  'org-todo-regexp org-todo-regexp
+	  'priority (if habit?
+			(org-habit-get-priority (org-habit-parse-todo))
+		      (org-get-priority item))
+	  'todo-state todo-state
+	  'ts-date (if time-stamp
+		       (org-agenda--timestamp-to-absolute time-stamp)
+		     current)
+	  'type "timestamp"
+	  'warntime (get-text-property (point) 'org-appt-warntime))))))
 
 (defun org-agenda--entry-from-todo (date data)
   "Return diary entries for DATE associated to a diary S-exp entry.
