@@ -5363,7 +5363,7 @@ is active."
 	 (org-agenda-text-search-extra-files org-agenda-text-search-extra-files)
 	 regexp rtn rtnall files file pos inherited-tags
 	 marker category level tags c neg re boolean
-	 ee txt beg end words regexps+ regexps- hdl-only buffer beg1 str)
+	 ee txt beg end words regexps+ regexps- hdl-only buffer beg1)
     (unless (and (not edit-at)
 		 (stringp string)
 		 (string-match "\\S-" string))
@@ -5479,8 +5479,9 @@ is active."
 			   (org-get-agenda-file-buffer file)
 			 (error "No such file %s" file)))
 	  (if (not buffer)
-	      ;; If file does not exist, make sure an error message is sent
-	      (setq rtn (list (format "ORG-AGENDA-ERROR: No such org-file %s"
+	      ;; If file does not exist, make sure an error message is
+	      ;; sent.
+	      (setq rtn (list (format "ORG-AGENDA-ERROR: No such Org file %S"
 				      file))))
 	  (with-current-buffer buffer
 	    (with-syntax-table (org-search-syntax-table)
@@ -5519,22 +5520,31 @@ is active."
 
 		      (catch :skip
 			(goto-char beg)
+			(when (or (and org-agenda-skip-archived-trees
+				       (not org-agenda-archives-mode)
+				       (get-text-property (point)
+							  :org-archived))
+				  (and org-agenda-skip-comment-trees
+				       (get-text-property (point)
+							  :org-comment)))
+			  (org-end-of-subtree t)
+			  (throw :skip nil))
 			(org-agenda-skip)
-			(setq str (buffer-substring-no-properties
-				   (point-at-bol)
-				   (if hdl-only (point-at-eol) end)))
-			(mapc (lambda (wr) (when (string-match wr str)
-					(goto-char (1- end))
-					(throw :skip t)))
-			      regexps-)
-			(mapc (lambda (wr) (unless (string-match wr str)
-					(goto-char (1- end))
-					(throw :skip t)))
-			      (if todo-only
-				  (cons (concat "^\\*+[ \t]+"
-                                                org-not-done-regexp)
-					regexps+)
-				regexps+))
+			(let ((str (buffer-substring-no-properties
+				    (point-at-bol)
+				    (if hdl-only (point-at-eol) end))))
+			  (when (cl-some (lambda (w) (string-match-p w str))
+					 regexps-)
+			    (goto-char (1- end))
+			    (throw :skip t))
+			  (when (cl-some (lambda (w)
+					   (not (string-match-p w str)))
+					 (if todo-only
+					     (cons (concat "^\\*+[ \t]+"
+							   org-not-done-regexp)
+						   regexps+)
+					   regexps+))
+			    (throw :skip t)))
 			(goto-char beg)
 			(setq marker (org-agenda-new-marker (point))
 			      category (org-get-category)
