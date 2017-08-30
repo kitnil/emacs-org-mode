@@ -4887,7 +4887,7 @@ Throw `:skip' if no entry is associated to DATUM at DATE."
   (pcase-let* ((`(,pos ,_ ,time-stamp) datum)
 	       (current (calendar-absolute-from-gregorian date))
 	       (type (cond ((string-prefix-p "<%%" time-stamp) 'sexp)
-			   ((org-get-repeat time-stamp) 'repeat)
+			   ((string-match-p org-repeat-re time-stamp) 'repeat)
 			   (t 'plain))))
     (goto-char pos)
     ;; Possibly skip time-stamp when a deadline is set.
