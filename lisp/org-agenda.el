@@ -4406,8 +4406,10 @@ Throw `:skip' if no entry is associated to DATUM at DATE."
 		(string-match-p "[0-9][0-9]?:[0-9][0-9]?[-0-9+:hdwmy \t.]*\\'"
 				base)))
       (throw :skip nil))
-    (let* ((sexp? (string-prefix-p "%%" base))
-	   (today (org-today))
+    ;; S-exp are not supported in deadlines.
+    (when (string-prefix-p "%%" base)
+      (throw :skip nil))
+    (let* ((today (org-today))
 	   (today? (org-agenda-today-p date))
 	   (todo-state (org-get-todo-state))
 	   (done? (member todo-state org-done-keywords))
@@ -4415,26 +4417,22 @@ Throw `:skip' if no entry is associated to DATUM at DATE."
 	   ;; either the base date or the last repeat, according to
 	   ;; `org-agenda-prefer-last-repeat'.
 	   (deadline
-	    (cond (sexp? (org-agenda--timestamp-to-absolute base current))
-		  ((or (eq org-agenda-prefer-last-repeat t)
-		       (member todo-state org-agenda-prefer-last-repeat))
-		   (org-agenda--timestamp-to-absolute
-		    base today 'past (current-buffer) pos))
-		  (t (org-agenda--timestamp-to-absolute base))))
+	    (if (or (eq org-agenda-prefer-last-repeat t)
+		    (member todo-state org-agenda-prefer-last-repeat))
+		(org-agenda--timestamp-to-absolute base today 'past)
+	      (org-agenda--timestamp-to-absolute base)))
 	   ;; REPEAT is the future repeat closest from CURRENT,
 	   ;; according to `org-agenda-show-future-repeats'. If the
 	   ;; latter is nil, or if the time stamp has no repeat part,
 	   ;; default to DEADLINE.
 	   (repeat
-	    (cond (sexp? deadline)
-		  ((<= current today) deadline)
+	    (cond ((<= current today) deadline)
 		  ((not org-agenda-show-future-repeats) deadline)
 		  (t
 		   (let ((next (if (eq org-agenda-show-future-repeats 'next)
 				   (1+ today)
 				 current)))
-		     (org-agenda--timestamp-to-absolute
-		      base next 'future (current-buffer) pos)))))
+		     (org-agenda--timestamp-to-absolute base next 'future)))))
 	   (diff (- deadline current))
 	   (suppress-prewarning
 	    (let ((scheduled
@@ -4450,8 +4448,7 @@ Throw `:skip' if no entry is associated to DATUM at DATE."
 	       ((eq org-agenda-skip-deadline-prewarning-if-scheduled
 		    'pre-scheduled)
 		;; Set pre-warning to no earlier than SCHEDULED.
-		(min (- deadline
-			(org-agenda--timestamp-to-absolute scheduled))
+		(min (- deadline (org-agenda--timestamp-to-absolute scheduled))
 		     org-deadline-warning-days))
 	       ;; Set pre-warning to deadline.
 	       (t 0))))
@@ -4646,10 +4643,8 @@ time-stamp in the current buffer.
 Throw `:skip' if no entry is associated to DATA at DATE."
   (pcase-let* ((`(,pos ,_ ,start-stamp ,end-stamp) data)
 	       (current (calendar-absolute-from-gregorian date))
-	       (start (org-agenda--timestamp-to-absolute
-		       start-stamp nil nil (current-buffer) pos))
-	       (end (org-agenda--timestamp-to-absolute
-		     end-stamp nil nil (current-buffer) pos)))
+	       (start (org-agenda--timestamp-to-absolute start-stamp))
+	       (end (org-agenda--timestamp-to-absolute end-stamp)))
     (goto-char pos)
     ;; Discard range if DATE is outside.
     (when (or (< current start) (> current end))
@@ -4720,35 +4715,32 @@ Throw `:skip' if no entry is associated to DATUM at DATE."
 		(string-match-p "[0-9][0-9]?:[0-9][0-9]?[-0-9+:hdwmy \t.]*\\'"
 				base)))
       (throw :skip nil))
-    (let* ((sexp? (string-prefix-p "%%" base))
-	   (todo-state (save-match-data (org-get-todo-state)))
+    ;; S-exp are not supported as scheduled.
+    (when (string-prefix-p "%%" base)
+      (throw :skip nil))
+    (let* ((todo-state (save-match-data (org-get-todo-state)))
 	   (done? (member todo-state org-done-keywords))
 	   ;; SCHEDULE is the scheduled date for the entry.  It is
 	   ;; either the bare date or the last repeat, according to
 	   ;; `org-agenda-prefer-last-repeat'.
 	   (schedule
-	    (cond
-	     (sexp? (org-agenda--timestamp-to-absolute base current))
-	     ((or (eq org-agenda-prefer-last-repeat t)
-		  (member todo-state org-agenda-prefer-last-repeat))
-	      (org-agenda--timestamp-to-absolute
-	       base today 'past (current-buffer) pos))
-	     (t (org-agenda--timestamp-to-absolute base))))
+	    (if (or (eq org-agenda-prefer-last-repeat t)
+		    (member todo-state org-agenda-prefer-last-repeat))
+		(org-agenda--timestamp-to-absolute base today 'past)
+	      (org-agenda--timestamp-to-absolute base)))
 	   ;; REPEAT is the future repeat closest from CURRENT,
 	   ;; according to `org-agenda-show-future-repeats'. If the
 	   ;; latter is nil, or if the time stamp has no repeat part,
 	   ;; default to SCHEDULE.
 	   (repeat
 	    (cond
-	     (sexp? schedule)
 	     ((<= current today) schedule)
 	     ((not org-agenda-show-future-repeats) schedule)
 	     (t
 	      (let ((next (if (eq org-agenda-show-future-repeats 'next)
 			      (1+ today)
 			    current)))
-		(org-agenda--timestamp-to-absolute
-		 base next 'future (current-buffer) pos)))))
+		(org-agenda--timestamp-to-absolute base next 'future)))))
 	   (diff (- current schedule))
 	   (warntime (get-text-property (point) 'org-appt-warntime))
 	   (pastschedp (< schedule today))
@@ -4930,7 +4922,7 @@ Throw `:skip' if no entry is associated to DATUM at DATE."
 			  (member todo-state org-agenda-prefer-last-repeat))
 		      today
 		    current)
-		  'past (current-buffer) pos))
+		  'past))
 		(future
 		 ;; Display every repeated date past TODAY (exclusive)
 		 ;; unless `org-agenda-show-future-repeats' is nil.
@@ -4944,7 +4936,7 @@ Throw `:skip' if no entry is associated to DATUM at DATE."
 				   (1+ today)
 				 current)))
 		     (org-agenda--timestamp-to-absolute
-		      time-stamp base 'future (current-buffer) pos))))))
+		      time-stamp base 'future))))))
 	   (when (and (/= current past) (/= current future))
 	     (throw :skip nil)))))
       (let* ((category (org-get-category pos))
@@ -6109,15 +6101,18 @@ function from a program - use `org-agenda-day-entries' instead."
 
 ;;; Agenda entry finders
 
-(defun org-agenda--timestamp-to-absolute (&rest args)
-  "Call `org-time-string-to-absolute' with ARGS.
-However, throw `:skip' whenever an error is raised."
-  (condition-case e
-      (apply #'org-time-string-to-absolute args)
-    (org-diary-sexp-no-match (throw :skip nil))
-    (error
-     (message "%s; Skipping entry" (error-message-string e))
-     (throw :skip nil))))
+(defun org-agenda--timestamp-to-absolute (s &optional date prefer)
+  "Convert time stamp S to an absolute day number.
+
+If DAYNR in non-nil, and there is a specifier for a cyclic time
+stamp, get the closest date to DATE, an absolute day number.  If
+PREFER is `past' (respectively `future') return a date
+past (respectively after) or equal to DATE.
+
+This is like `org-time-string-to-absolute', but it does not
+support S-exp entries."
+  (if date (org-closest-date s date prefer)
+    (time-to-days (apply #'encode-time (org-parse-time-string s)))))
 
 (defun org-agenda-day-entries (date file data &rest types)
   "Return a list of agenda entries for DATE in FILE.
