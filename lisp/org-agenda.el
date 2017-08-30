@@ -4475,7 +4475,9 @@ Throw `:skip' if no entry is associated to DATUM at DATE."
       (re-search-backward org-todo-line-regexp nil t)
       (let* ((level (make-string (org-reduced-level (length (match-string 1)))
 				 ?\s))
-	     (head (match-string 3))(category (org-get-category))
+	     (head
+	      (org-trim (buffer-substring (match-end 1) (line-end-position))))
+	     (category (org-get-category))
 	     (tags (org-agenda--get-tags 'agenda))
 	     (time
 	      (cond
@@ -4594,9 +4596,10 @@ Throw `:skip' if no entry is associated to DATUM at DATE."
 		       (match-string 1)))
 		 (t nil))))
       (re-search-backward org-todo-line-regexp nil t)
-      (let* ((headline (match-string 3))
-	     (level (make-string (org-reduced-level (length (match-string 1)))
+      (let* ((level (make-string (org-reduced-level (length (match-string 1)))
 				 ?\s))
+	     (headline
+	      (org-trim (buffer-substring (match-end 1) (line-end-position))))
 	     (marker (org-agenda-new-marker pos))
 	     (hdmarker (org-agenda-new-marker (line-beginning-position)))
 	     (category (org-get-category))
@@ -4651,9 +4654,10 @@ Throw `:skip' if no entry is associated to DATA at DATE."
       (throw :skip nil))
     (re-search-backward org-todo-line-regexp nil t)
     (let ((todo-state (match-string 2))
-	  (head (match-string 3))
 	  (level (make-string (org-reduced-level (length (match-string 1)))
-			      ?\s)))
+			      ?\s))
+	  (head
+	   (org-trim (buffer-substring (match-end 1) (line-end-position)))))
       (when (and org-agenda-skip-timestamp-if-done
 		 (member todo-state org-done-keywords))
 	(throw :skip nil))
@@ -4818,9 +4822,10 @@ Throw `:skip' if no entry is associated to DATUM at DATE."
 	(throw :skip nil))
       (re-search-backward org-todo-line-regexp nil t)
       (let* ((todo-state (match-string 2))
-	     (head (match-string 3))
 	     (level (make-string (org-reduced-level (length (match-string 1)))
 				 ?\s))
+	     (head
+	      (org-trim (buffer-substring (match-end 1) (line-end-position))))
 	     (category (org-get-category))
 	     (tags (org-agenda--get-tags 'agenda))
 	     (time
@@ -4896,7 +4901,8 @@ Throw `:skip' if no entry is associated to DATUM at DATE."
     (let ((todo-state (match-string 2))
 	  (level (make-string (org-reduced-level (length (match-string 1)))
 			      ?\s))
-	  (head (match-string 3)))
+	  (head
+	   (org-trim (buffer-substring (match-end 1) (line-end-position)))))
       ;; Possibly skip DONE tasks.
       (when (and org-agenda-skip-timestamp-if-done
 		 (member todo-state org-done-keywords))
