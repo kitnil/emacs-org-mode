@@ -4415,14 +4415,7 @@ Throw `:skip' if no entry is associated to DATUM at DATE."
 	       (category (org-get-category))
 	       (level (make-string (org-reduced-level (org-outline-level))
 				   ?\s))
-	       (inherited-tags
-		(or (eq org-agenda-show-inherited-tags 'always)
-		    (and (listp org-agenda-show-inherited-tags)
-			 (memq 'todo org-agenda-show-inherited-tags))
-		    (and (eq org-agenda-show-inherited-tags t)
-			 (or (eq org-agenda-use-tag-inheritance t)
-			     (memq 'todo org-agenda-use-tag-inheritance)))))
-	       (tags (org-get-tags-at nil (not inherited-tags)))
+	       (tags (org-agenda--get-tags 'todo))
 	       (headline (buffer-substring (point) (line-end-position)))
 	       (item
 		(org-agenda-format-item
@@ -4551,15 +4544,7 @@ Throw `:skip' if no entry is associated to DATUM at DATE."
 	       (level (make-string (org-reduced-level (org-outline-level))
 				   ?\s))
 	       (head (buffer-substring (point) (line-end-position)))
-	       (inherited-tags
-		(or (eq org-agenda-show-inherited-tags 'always)
-		    (and (listp org-agenda-show-inherited-tags)
-			 (memq 'agenda org-agenda-show-inherited-tags))
-		    (and (eq org-agenda-show-inherited-tags t)
-			 (or (eq org-agenda-use-tag-inheritance t)
-			     (memq 'agenda
-				   org-agenda-use-tag-inheritance)))))
-	       (tags (org-get-tags-at nil (not inherited-tags)))
+	       (tags (org-agenda--get-tags 'agenda))
 	       (time
 		(cond
 		 ;; No time of day designation if it is only
@@ -4626,14 +4611,7 @@ a list of strings."
 	   (marker (org-agenda-new-marker))
 	   (level (make-string (org-reduced-level (org-outline-level))
 			       ?\s))
-	   (inherited-tags
-	    (or (eq org-agenda-show-inherited-tags 'always)
-		(and (listp org-agenda-show-inherited-tags)
-		     (memq 'agenda org-agenda-show-inherited-tags))
-		(and (eq org-agenda-show-inherited-tags t)
-		     (or (eq org-agenda-use-tag-inheritance t)
-			 (memq 'agenda org-agenda-use-tag-inheritance)))))
-	   (tags (org-get-tags-at nil (not inherited-tags)))
+	   (tags (org-agenda--get-tags 'agenda))
 	   (todo-state (org-get-todo-state))
 	   (warntime (get-text-property (point) 'org-appt-warntime))
 	   (extra nil)
@@ -4700,14 +4678,7 @@ Throw `:skip' if no entry is associated to DATA at DATE."
 	     (marker (org-agenda-new-marker pos))
 	     (hdmarker (org-agenda-new-marker (point)))
 	     (category (org-get-category))
-	     (inherited-tags
-	      (or (eq org-agenda-show-inherited-tags 'always)
-		  (and (listp org-agenda-show-inherited-tags)
-		       (memq 'agenda org-agenda-show-inherited-tags))
-		  (and (eq org-agenda-show-inherited-tags t)
-		       (or (eq org-agenda-use-tag-inheritance t)
-			   (memq 'agenda org-agenda-use-tag-inheritance)))))
-	     (tags (org-get-tags-at nil (not inherited-tags)))
+	     (tags (org-agenda--get-tags 'agenda))
 	     (level (make-string (org-reduced-level (org-outline-level))
 				 ?\s))
 	     (item (org-agenda-format-item
@@ -4866,15 +4837,7 @@ Throw `:skip' if no entry is associated to DATUM at DATE."
 	(re-search-backward "^\\*+[ \t]+" nil t)
 	(goto-char (match-end 0))
 	(let* ((category (org-get-category))
-	       (inherited-tags
-		(or (eq org-agenda-show-inherited-tags 'always)
-		    (and (listp org-agenda-show-inherited-tags)
-			 (memq 'agenda org-agenda-show-inherited-tags))
-		    (and (eq org-agenda-show-inherited-tags t)
-			 (or (eq org-agenda-use-tag-inheritance t)
-			     (memq 'agenda
-				   org-agenda-use-tag-inheritance)))))
-	       (tags (org-get-tags-at nil (not inherited-tags)))
+	       (tags (org-agenda--get-tags 'agenda))
 	       (level (make-string (org-reduced-level (org-outline-level))
 				   ?\s))
 	       (head (buffer-substring (point) (line-end-position)))
@@ -4989,15 +4952,7 @@ Throw `:skip' if no entry is associated to DATUM at DATE."
 		   (assq (point) deadlines))
 	  (throw :skip nil))
 	(let* ((category (org-get-category pos))
-	       (inherited-tags
-		(or (eq org-agenda-show-inherited-tags 'always)
-		    (and (consp org-agenda-show-inherited-tags)
-			 (memq 'agenda org-agenda-show-inherited-tags))
-		    (and (eq org-agenda-show-inherited-tags t)
-			 (or (eq org-agenda-use-tag-inheritance t)
-			     (memq 'agenda
-				   org-agenda-use-tag-inheritance)))))
-	       (tags (org-get-tags-at nil (not inherited-tags)))
+	       (tags (org-agenda--get-tags 'agenda))
 	       (level (make-string (org-reduced-level (org-outline-level))
 				   ?\s))
 	       (head (and (looking-at "\\*+[ \t]+\\(.*\\)")
@@ -5059,14 +5014,7 @@ Throw `:skip' if no entry is associated to DATA at DATE."
 			    scheduled deadline timestamp))
 	     (ts-date (car ts-date-pair))
 	     (ts-date-type (cdr ts-date-pair))
-	     (inherited-tags
-	      (or (eq org-agenda-show-inherited-tags 'always)
-		  (and (listp org-agenda-show-inherited-tags)
-		       (memq 'todo org-agenda-show-inherited-tags))
-		  (and (eq org-agenda-show-inherited-tags t)
-		       (or (eq org-agenda-use-tag-inheritance t)
-			   (memq 'todo org-agenda-use-tag-inheritance)))))
-	     (tags (org-get-tags-at nil (not inherited-tags)))
+	     (tags (org-agenda--get-tags 'todo))
 	     (level (make-string (org-reduced-level (org-outline-level))
 				 ?\s))
 	     (priority (1+ (org-get-priority headline)))
@@ -5361,9 +5309,8 @@ is active."
 		      'help-echo (format "mouse-2 or RET jump to location")))
 	 (full-words org-agenda-search-view-force-full-words)
 	 (org-agenda-text-search-extra-files org-agenda-text-search-extra-files)
-	 regexp rtn rtnall files file pos inherited-tags
-	 marker category level tags c neg re boolean
-	 ee txt beg end words regexps+ regexps- hdl-only buffer beg1)
+	 regexp rtn rtnall files file pos marker category level tags c neg re
+	 boolean ee txt beg end words regexps+ regexps- hdl-only buffer beg1)
     (unless (and (not edit-at)
 		 (stringp string)
 		 (string-match "\\S-" string))
@@ -5549,14 +5496,7 @@ is active."
 			(setq marker (org-agenda-new-marker (point))
 			      category (org-get-category)
 			      level (make-string (org-reduced-level (org-outline-level)) ? )
-			      inherited-tags
-			      (or (eq org-agenda-show-inherited-tags 'always)
-				  (and (listp org-agenda-show-inherited-tags)
-				       (memq 'todo org-agenda-show-inherited-tags))
-				  (and (eq org-agenda-show-inherited-tags t)
-				       (or (eq org-agenda-use-tag-inheritance t)
-					   (memq 'todo org-agenda-use-tag-inheritance))))
-			      tags (org-get-tags-at nil (not inherited-tags))
+			      tags (org-agenda--get-tags 'todo)
 			      txt (org-agenda-format-item
 				   ""
 				   (buffer-substring-no-properties
@@ -8566,6 +8506,21 @@ When called with a prefix argument, include all archive files as well."
 	     (org-agenda-show)))
       (and org-agenda-show-outline-path
 	   (org-with-point-at m (org-display-outline-path t))))))
+
+(defun org-agenda--get-tags (inheritance-type)
+  "List all headline tags applicable at point.
+Obey `org-agenda-show-inherited-tags'.  INHERITANCE-TYPE is
+a symbol among `agenda', `todo' and `search'.  See
+`org-use-tag-inheritance' for details."
+  (let ((inherited-tags
+	 (or (eq org-agenda-show-inherited-tags 'always)
+	     (and (listp org-agenda-show-inherited-tags)
+		  (memq 'agenda org-agenda-show-inherited-tags))
+	     (and (eq org-agenda-show-inherited-tags t)
+		  (or (eq org-agenda-use-tag-inheritance t)
+		      (memq inheritance-type
+			    org-agenda-use-tag-inheritance))))))
+    (org-get-tags-at (point) (not inherited-tags))))
 
 (defun org-agenda-show-tags ()
   "Show the tags applicable to the current item."
