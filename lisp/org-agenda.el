@@ -4652,6 +4652,7 @@ Throw `:skip' if no entry is associated to DATA at DATE."
     ;; Discard range if DATE is outside.
     (when (or (< current start) (> current end))
       (throw :skip nil))
+    (end-of-line)			;match ranges on headline
     (re-search-backward org-todo-line-regexp nil t)
     (let ((todo-state (match-string 2))
 	  (level (make-string (org-reduced-level (length (match-string 1)))
@@ -4897,6 +4898,7 @@ Throw `:skip' if no entry is associated to DATUM at DATE."
 		 (not (string-prefix-p (format "<%d-%02d-%02d" year month day)
 				       time-stamp))))
       (throw :skip nil))
+    (end-of-line)			;match timestamps on headline
     (re-search-backward org-todo-line-regexp nil t)
     (let ((todo-state (match-string 2))
 	  (level (make-string (org-reduced-level (length (match-string 1)))
