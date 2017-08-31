@@ -4148,6 +4148,7 @@ Throw an error if FILE doesn't exist or isn't an Org file."
 			(pcase type
 			  (`:clock (org-agenda--clock-data))
 			  (`:closed (org-agenda--closed-data))
+			  (`:inactive (org-agenda--inactive-data))
 			  (`:planning (org-agenda--planning-data))
 			  (`:state (org-agenda--state-data))
 			  (`:timestamp (org-agenda--timestamp-data))
@@ -4282,6 +4283,42 @@ associated time-stamp."
 		     result)))))))
     result))
 
+(defun org-agenda--diary-data ()
+  "Extract S-exp diary data from current buffer, starting from point.
+Return a list of (POSITION diary SEXP TEXT) elements.  POSITION
+is the beginning position of the diary entry.  SEXP is the diary
+S-exp, as a string.  TEXT is the text following the S-exp, as
+a string."
+  (let ((result nil))
+    (org-with-wide-buffer
+     (while (re-search-forward "^%%(" nil t)
+       (forward-char -1)
+       (let ((start (point))
+	     (pos (line-beginning-position)))
+	 (forward-sexp)
+	 (let ((sexp (buffer-substring start (point)))
+	       (text (progn (looking-at ".*$")
+			    (org-trim (match-string 0)))))
+	   (push (list pos 'diary sexp text) result)))))
+    result))
+
+(defun org-agenda--inactive-data ()
+  "Extract plain inactive timestamp data from current buffer, from point.
+Return a list of (POSITION inactive TIMESTAMP) elements.
+POSITION is the beginning position of the timestamp.  TIMESTAMP
+is the inactive timestamp, as a string."
+  (let ((result nil))
+    (org-with-wide-buffer
+     (while (re-search-forward org-ts-regexp-inactive nil t)
+       (unless (save-match-data
+		 (or (org-at-planning-p)
+		     (org-match-line "[ \t]*# ")
+		     (org-in-src-block-p t)
+		     (org-at-clock-log-p)))
+	 (push (list (match-beginning 0) 'inactive (match-string 0))
+	       result))))
+    result))
+
 (defun org-agenda--planning-data ()
   "Extract planning data from current buffer, starting from point.
 Return a list of (POSITION TYPE TIMESTAMP) elements.  POSITION is
@@ -4348,25 +4385,6 @@ the last one for `range' type or nil."
 		   (list pos 'timestamp (match-string 0) nil))
 		 result)
 	   (goto-char (match-end 0))))))
-    result))
-
-(defun org-agenda--diary-data ()
-  "Extract S-exp diary data from current buffer, starting from point.
-Return a list of (POSITION diary SEXP TEXT) elements.  POSITION
-is the beginning position of the diary entry.  SEXP is the diary
-S-exp, as a string.  TEXT is the text following the S-exp, as
-a string."
-  (let ((result nil))
-    (org-with-wide-buffer
-     (while (re-search-forward "^%%(" nil t)
-       (forward-char -1)
-       (let ((start (point))
-	     (pos (line-beginning-position)))
-	 (forward-sexp)
-	 (let ((sexp (buffer-substring start (point)))
-	       (text (progn (looking-at ".*$")
-			    (org-trim (match-string 0)))))
-	   (push (list pos 'diary sexp text) result)))))
     result))
 
 (defun org-agenda--todo-data ()
@@ -4877,26 +4895,30 @@ Throw `:skip' if no entry is associated to DATUM at DATE."
   "Return agenda entry for DATE associated to a time-stamp.
 
 DATE is a list of the form (MONTH DAY YEAR).  DATUM is a list of
-the form (POS timestamp TIMESTAMP) where POS is the location of
-string TIMESTAMP, a time-stamp.  DEADLINES is a list of positions
-for deadlines displayed in the agenda.
+the form (POS TYPE TIMESTAMP) where POS is the location of the
+timestamp, TYPE is either `timestamp' or `inactive' and TIMESTAMP
+is the complete time stamp, as a string.  DEADLINES is a list of
+positions for deadlines displayed in the agenda.
 
 Throw `:skip' if no entry is associated to DATUM at DATE."
-  (pcase-let* ((`(,pos ,_ ,time-stamp) datum)
+  (pcase-let* ((`(,pos ,type ,time-stamp) datum)
 	       (current (calendar-absolute-from-gregorian date))
-	       (type (cond ((string-prefix-p "<%%" time-stamp) 'sexp)
-			   ((string-match-p org-repeat-re time-stamp) 'repeat)
-			   (t 'plain))))
+	       (subtype (cond
+			 ((eq type 'inactive) 'inactive)
+			 ((string-prefix-p "<%%" time-stamp) 'sexp)
+			 ((string-match-p org-repeat-re time-stamp) 'repeat)
+			 (t 'plain))))
     (goto-char pos)
     ;; Possibly skip time-stamp when a deadline is set.
     (when (and org-agenda-skip-timestamp-if-deadline-is-shown
 	       (assq (point) deadlines))
       (throw :skip nil))
-    ;; Discard plain timestamps not matching CURRENT.
-    (when (and (eq type 'plain)
+    ;; Discard plain and inactive timestamps not matching CURRENT.
+    (when (and (memq subtype '(inactive plain))
 	       (pcase-let ((`(,month ,day ,year) date))
-		 (not (string-prefix-p (format "<%d-%02d-%02d" year month day)
-				       time-stamp))))
+		 (not (string-match-p (format "\\`[[<]%d-%02d-%02d"
+					      year month day)
+				      time-stamp))))
       (throw :skip nil))
     (end-of-line)			;match timestamps on headline
     (re-search-backward org-todo-line-regexp nil t)
@@ -4909,7 +4931,7 @@ Throw `:skip' if no entry is associated to DATUM at DATE."
       (when (and org-agenda-skip-timestamp-if-done
 		 (member todo-state org-done-keywords))
 	(throw :skip nil))
-      (pcase type
+      (pcase subtype
 	(`sexp
 	 (let ((sexp (substring time-stamp 3 -1)))
 	   (unless (org-diary-sexp-entry sexp "" date)
@@ -4952,7 +4974,8 @@ Throw `:skip' if no entry is associated to DATUM at DATE."
 	     (habit? (and (fboundp 'org-is-habit-p) (org-is-habit-p)))
 	     (item
 	      (org-agenda-format-item
-	       nil head level category tags time-stamp org-ts-regexp habit?)))
+	       (and (eq subtype 'inactive) org-agenda-inactive-leader)
+	       head level category tags time-stamp org-ts-regexp habit?)))
 	(org-add-props item nil
 	  'date date
 	  'face 'org-agenda-calendar-event
@@ -5118,8 +5141,13 @@ items if they have an hour specification like [h]h:mm."
 		     ((memq org-agenda-show-log '(only clockcheck))
 		      org-agenda-log-mode-items)
 		     (org-agenda-show-log
-		      (append org-agenda-log-mode-items org-agenda-entry-types))
-		     (t org-agenda-entry-types)))
+		      (append org-agenda-log-mode-items
+			      (and org-agenda-include-inactive-timestamps
+				   '(:inactive))
+			      org-agenda-entry-types))
+		     (t (append (and org-agenda-include-inactive-timestamps
+				     '(:inactive))
+				org-agenda-entry-types))))
 	     (data (org-agenda--all-filtered-data files types)))
 	(dolist (d day-numbers)
 	  (let ((date (calendar-gregorian-from-absolute d))
@@ -6171,7 +6199,7 @@ keywords indicating which kind of entries should be extracted."
 		 (push (org-agenda--entry-from-scheduled
 			date datum deadline-positions with-hours?)
 		       results))
-		(`timestamp
+		((or `inactive `timestamp)
 		 (push (org-agenda--entry-from-timestamp
 			date datum deadline-positions)
 		       results))
