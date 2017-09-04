@@ -18445,13 +18445,10 @@ Optional argument FILE means use this file instead of the current."
   "Get an agenda buffer visiting FILE.
 If the buffer needs to be created, add it to the list of buffers
 which might be released later."
-  (let ((buf (org-find-base-buffer-visiting file)))
-    (if buf
-	buf ; just return it
-      ;; Make a new buffer and remember it
-      (setq buf (find-file-noselect file))
-      (when buf (push buf org-agenda-new-buffers))
-      buf)))
+  (or (org-find-base-buffer-visiting file)
+      (let ((buffer (find-file-noselect file)))
+	(push buffer org-agenda-new-buffers)
+	buffer)))
 
 (defun org-release-buffers (blist)
   "Release all buffers in list, asking the user for confirmation when needed.
@@ -21843,11 +21840,10 @@ if it fails."
     template))
 
 (defun org-base-buffer (buffer)
-  "Return the base buffer of BUFFER, if it has one.  Else return the buffer."
-  (if (not buffer)
-      buffer
-    (or (buffer-base-buffer buffer)
-	buffer)))
+  "Return the base buffer of BUFFER, if it has one.
+Else return the buffer."
+  (and buffer
+       (or (buffer-base-buffer buffer) buffer)))
 
 (defun org-wrap (string &optional width lines)
   "Wrap string to either a number of lines, or a width in characters.
@@ -22248,13 +22244,11 @@ so values can contain further %-escapes if they are define later in TABLE."
     string))
 
 (defun org-find-base-buffer-visiting (file)
-  "Like `find-buffer-visiting' but always return the base buffer and
-not an indirect buffer."
-  (let ((buf (or (get-file-buffer file)
-		 (find-buffer-visiting file))))
-    (if buf
-	(or (buffer-base-buffer buf) buf)
-      nil)))
+  "Return base buffer visiting FILE (a string).
+Unlike `find-buffer-visiting', always return the base buffer and
+not an indirect buffer.  If there is no such buffer, return nil."
+  (let ((buffer (find-buffer-visiting file)))
+    (and buffer (org-base-buffer buffer))))
 
 ;;; TODO: Only called once, from ox-odt which should probably use
 ;;; org-export-inline-image-p or something.
