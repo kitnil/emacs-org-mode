@@ -4791,15 +4791,15 @@ Throw `:skip' if no entry is associated to DATA at DATE."
 	   'type "block"))))
     (_ (error "Invalid range data: %S" datum))))
 
-(defun org-agenda--entry-from-scheduled (date datum deadlines with-hour)
+(defun org-agenda--entry-from-scheduled (date datum last-deadline with-hour)
   "Return agenda entry for DATE associated to a schedule.
 
 DATE is a list of the form (MONTH DAY YEAR).  DATUM is a list:
 \(ENTRY scheduled POSITION TIMESTAMP nil HEADLINE LEVEL TODO),
-see `org-agenda--planning-data' for details.  DEADLINES is a list
-of positions for deadlines displayed in the agenda.  When
-WITH-HOUR is non-nil, only return schedules with an hour
-specification like [h]h:mm.
+see `org-agenda--planning-data' for details.  LAST-DEADLINE is
+the position of the entry from last deadline displayed in the
+agenda.  When WITH-HOUR is non-nil, only return schedules with an
+hour specification like [h]h:mm.
 
 Throw `:skip' if no entry is associated to DATUM at DATE."
   (pcase datum
@@ -4891,13 +4891,9 @@ Throw `:skip' if no entry is associated to DATUM at DATE."
        ;; `org-agenda-skip-scheduled-if-deadline-is-shown'.  This
        ;; doesn't apply to habits.
        (when (pcase org-agenda-skip-scheduled-if-deadline-is-shown
-	       ((guard
-		 (or habit?
-		     (not (memq (line-beginning-position 0) deadlines))))
-		nil)
+	       ((guard (or habit? (not (eq entry last-deadline)))) nil)
 	       (`repeated-after-deadline
-		(let ((deadline (time-to-days
-				 (org-get-deadline-time (point)))))
+		(let ((deadline (time-to-days (org-get-deadline-time pos))))
 		  (and (<= schedule deadline) (> current deadline))))
 	       (`not-today pastschedp)
 	       (`t t)
@@ -4960,21 +4956,21 @@ Throw `:skip' if no entry is associated to DATUM at DATE."
 	   'warntime warntime))))
     (_ (error "Invalid scheduled data: %S" datum))))
 
-(defun org-agenda--entry-from-timestamp (date datum deadlines)
+(defun org-agenda--entry-from-timestamp (date datum last-deadline)
   "Return agenda entry for DATE associated to a time-stamp.
 
 DATE is a list of the form (MONTH DAY YEAR).  DATUM is a list of
 the form (ENTRY TYPE POSITION TIMESTAMP HEADLINE LEVEL TODO), see
 `org-agenda--timesta-data' and `org-agenda--inactive-data' for
-details.  DEADLINES is a list of positions for deadlines
-displayed in the agenda.
+details.  LAST-DEADLINE is the position of the entry from last
+deadline displayed in the agenda.
 
 Throw `:skip' if no entry is associated to DATUM at DATE."
   (pcase datum
     (`(,entry ,type ,pos ,timestamp ,headline ,level ,todo)
      ;; Possibly skip timestamp when a deadline is set.
      (when (and org-agenda-skip-timestamp-if-deadline-is-shown
-		(assq entry deadlines))
+		(eq entry last-deadline))
        (throw :skip nil))
      (let ((current (calendar-absolute-from-gregorian date))
 	   (subtype (cond
@@ -5060,7 +5056,7 @@ Throw `:skip' if no entry is associated to DATUM at DATE."
 			(org-agenda--timestamp-to-absolute timestamp)
 		      current)
 	   'type "timestamp"
-	   'warntime (get-text-property (point) 'org-appt-warntime)))))
+	   'warntime (get-text-property pos 'org-appt-warntime)))))
     (_ (error "Invalid timestamp data: %S" datum))))
 
 (defun org-agenda--entry-from-todo (date datum)
@@ -6218,27 +6214,13 @@ FILE is the filename containing the data.  DATA is the data to
 process, as returned by `org-agenda--file-data'.  TYPES are
 keywords indicating which kind of entries should be extracted."
   (setf org-agenda-current-date date)
-  (let* ((with-hours? (or (memq :deadline* types)
-			  (memq :scheduled* types)))
+  (let* ((hours? (or (memq :deadline* types)
+		     (memq :scheduled* types)))
 	 (today? (org-agenda-today-p date)))
     (with-current-buffer (org-get-agenda-file-buffer file)
-      ;; Get deadline entries first since the information is needed in
-      ;; other entries converters.
       (org-with-point-at 1
-	(let* ((deadline-entries
-		(delq nil
-		      (mapcar (lambda (datum)
-				(catch :skip
-				  (and (eq 'deadline (nth 1 datum))
-				       (org-agenda--entry-from-deadline
-					date datum with-hours?))))
-			      data)))
-	       (deadline-positions
-		(mapcar (lambda (d)
-			  (let ((m (get-text-property 0 'org-hd-marker d)))
-			    (and m (marker-position m))))
-			deadline-entries))
-	       (results nil))
+	(let ((last-deadline nil)
+	      (results nil))
 	  (dolist (datum data)
 	    (catch :skip
 	      (pcase-let ((`(,pos ,type . ,_) datum))
@@ -6254,24 +6236,31 @@ keywords indicating which kind of entries should be extracted."
 		  ((or `clock `closed `state)
 		   (push (org-agenda--entry-from-log date datum)
 			 results))
-		  (`deadline nil)	;already done
+		  (`deadline
+		   ;; Store the entry position of the last displayed
+		   ;; deadline.  Some other transformers need this
+		   ;; information to check if a deadline is displayed
+		   ;; is their relative entry.
+		   (setq last-deadline pos)
+		   (push (org-agenda--entry-from-deadline date datum hours?)
+			 results))
 		  (`range
 		   (push (org-agenda--entry-from-range date datum)
 			 results))
 		  (`scheduled
 		   (push (org-agenda--entry-from-scheduled
-			  date datum deadline-positions with-hours?)
+			  date datum last-deadline hours?)
 			 results))
 		  ((or `inactive `timestamp)
 		   (push (org-agenda--entry-from-timestamp
-			  date datum deadline-positions)
+			  date datum last-deadline)
 			 results))
 		  (`todo
 		   (when today?
 		     (push (org-agenda--entry-from-todo date datum)
 			   results)))
 		  (type (error "Unknown agenda entry type: %S" type))))))
-	  (nconc deadline-entries results))))))
+	  results)))))
 
 (defsubst org-em (x y list)
   "Is X or Y a member of LIST?"
