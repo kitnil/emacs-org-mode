@@ -4202,12 +4202,7 @@ details about these, see `org-agenda-entry-types'.
 Unlike `org-agenda--file-data', ignore skipped data and data
 outside the restricted range, if any.  Return value is an alist
 with file names as keys and items as values."
-  (let ((deadline? (and org-agenda-include-deadlines
-			(or (memq :deadline types)
-			    (memq :deadline* types))))
-	(scheduled? (or (memq :scheduled types)
-			(memq :scheduled* types)))
-	(data nil))
+  (let ((data nil))
     (dolist (file files)
       (catch 'nextfile
 	(org-check-agenda-file file)
@@ -4238,25 +4233,21 @@ with file names as keys and items as values."
 		 ;; cannot move point.  As a consequence, we store the
 		 ;; skipping limit in a dedicated variable LOCAL-SKIP.
 		 (pcase-let* ((`(,pos ,type . ,_) item))
-		   (when (and (eq type 'deadline) (not deadline?))
+		   (when (or (and org-agenda-skip-archived-trees
+				  (not org-agenda-archives-mode)
+				  (get-text-property pos :org-archived))
+			     (and org-agenda-skip-comment-trees
+				  (get-text-property pos :org-comment)))
 		     (throw :skip nil))
-		   (when (and (eq type 'scheduled) (not scheduled?))
-		     (throw :skip nil))
+		   ;; Outside restricted range.  Store everything
+		   ;; collected so far and bail out.
 		   (when (>= pos end)
-		     ;; Outside restricted range.  Store everything
-		     ;; collected so far and bail out.
 		     (when filtered
 		       (push (cons file (nreverse filtered)) data))
 		     (throw 'nextfile nil))
 		   (when (< pos (max (or (cdr (assq type local-skip))
 					 (point))
 				     (point)))
-		     (throw :skip nil))
-		   (when (or (and org-agenda-skip-archived-trees
-				  (not org-agenda-archives-mode)
-				  (get-text-property pos :org-archived))
-			     (and org-agenda-skip-comment-trees
-				  (get-text-property pos :org-comment)))
 		     (throw :skip nil))
 		   (goto-char pos)
 		   (org-agenda-skip)	;global skipping
@@ -5205,6 +5196,9 @@ items if they have an hour specification like [h]h:mm."
 		     (t (append (and org-agenda-include-inactive-timestamps
 				     '(:inactive))
 				org-agenda-entry-types))))
+	     ;; Filtering data now prevents having to call
+	     ;; `org-agenda-skip', which may be time consuming, every
+	     ;; day, for every file.
 	     (data (org-agenda--all-filtered-data files types)))
 	(dolist (d day-numbers)
 	  (let ((date (calendar-gregorian-from-absolute d))
