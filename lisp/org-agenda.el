@@ -4358,19 +4358,18 @@ associated time-stamp.  HEADLINE is the headline text.  LEVEL is
 the number of stars."
   (let ((result nil))
     (while (re-search-forward org-planning-line-re nil t)
-      (when (progn
+      (when (save-excursion
 	      (forward-line -1)
 	      (looking-at org-todo-line-regexp))
 	(let ((todo (match-string 2))
 	      (level (- (match-end 1) (match-beginning 1)))
 	      (title
 	       (org-trim
-		(buffer-substring (match-end 1) (line-end-position))))
-	      (entry (point))
-	      (pos (line-beginning-position 2))
-
-	      (end (line-end-position 2)))
-	  (forward-line)
+		(buffer-substring (match-end 1) (line-end-position 0))))
+	      (entry (line-beginning-position 0))
+	      (pos (line-beginning-position))
+	      (end (line-end-position)))
+	  (beginning-of-line)
 	  (save-excursion
 	    (when (re-search-forward org-closed-time-regexp end t)
 	      (push
