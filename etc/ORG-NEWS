@@ -12,6 +12,11 @@ Please send Org bug reports to mailto:emacs-orgmode@gnu.org.
 
 * Version 9.2
 ** Incompatible changes
+*** Values in ~org-agenda-log-mode-items~ need to be renamed
+The renaming is as follow:
+  - ~closed~ \rarr ~:closed~
+  - ~clock~ \rarr ~:clock~
+  - ~state~ \rarr ~:state~
 *** =align= STARTUP value no longer narrow table columns
 
 Columns narrowing (or shrinking) is now dynamic. See [[*Dynamically
