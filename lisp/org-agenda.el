@@ -5702,7 +5702,8 @@ for a keyword.  A numeric prefix directly selects the Nth keyword in
 		    (insert " " s))))
 	      (insert "\n"))
 	    (add-text-properties pos (1- (point))
-				 (list 'face 'org-agenda-structure))))
+				 (list 'face 'org-agenda-structure))
+	    (buffer-string)))
 	(org-agenda-mark-header-line (point-min))
 	(when all-entries
 	  (insert (org-agenda-finalize-entries all-entries 'todo) "\n")))
