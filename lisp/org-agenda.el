@@ -4142,10 +4142,12 @@ Throw an error if FILE doesn't exist or isn't an Org file."
 	   (let ((todo-info (assq :todo-regexp cache)))
 	     (when (and (eq type :todo)
 			(not (equal org-todo-regexp (cdr todo-info))))
-	       ;; TODO keywords changed: we must refresh cache.
+	       ;; TODO keywords changed: cached data is invalid,
+	       ;; re-fetch it.
 	       (setq data (org-agenda--todo-data))
-	       (setcdr (assq :todo cache) data)
-	       (setcdr todo-info org-todo-regexp)))
+	       ;; Update cache with new values.
+	       (setcdr todo-info org-todo-regexp)
+	       (setcdr (assq :todo cache) data)))
 	   (setq results (append data results)))
 	  (_
 	   (org-with-point-at 1
@@ -4284,7 +4286,7 @@ stars."
 	  (let ((time (progn
 			(skip-chars-forward " \t")
 			(and (looking-at org-tsr-regexp-both)
-			     (match-string 0)))))
+			     (cons (match-string 1) (match-string 3))))))
 	    (when time
 	      (save-excursion
 		(re-search-backward org-todo-line-regexp nil t)
@@ -4390,17 +4392,23 @@ the number of stars."
 
 (defun org-agenda--state-data ()
   "Extract log data from current buffer, starting from point.
+
 Return a list:
 
-  (ENTRY state POSITION nil STATE HEADLINE LEVEL)
+  (ENTRY state POSITION TIMESTAMP STATE HEADLINE LEVEL)
 
 ENTRY is the beginning of the relative heading.  POSITION is the
-position at the beginning of the clock line.  STATE is the TODO
+position at the beginning of the clock line.  TIMESTAMP is the
+inactive timestamp dating the state change.  STATE is the TODO
 state.  HEADLINE is the headline text.  LEVEL is the number of
 stars."
-  (let ((result nil))
-    (while (re-search-forward "^[ \t]*- State \"\\([a-zA-Z0-9]+\\)\"" nil t)
-      (let ((state (match-string 1)))
+  (let ((result nil)
+	(regexp
+	 (format "^[ \t]*- State \"\\(\\S-+?\\)\" +from \"\\S-+?\" +\\(%s\\)"
+		 org-ts-regexp-inactive)))
+    (while (re-search-forward regexp nil t)
+      (let ((state (match-string 1))
+	    (timestamp (match-string 2)))
 	(unless (org-in-src-block-p t)
 	  (let ((begin (line-beginning-position)))
 	    (save-excursion
@@ -4409,7 +4417,7 @@ stars."
 		    (headline
 		     (org-trim
 		      (buffer-substring (match-end 1) (line-end-position)))))
-		(push (list (point) 'state begin nil state headline level)
+		(push (list (point) 'state begin timestamp state headline level)
 		      result)))))))
     result))
 
@@ -4665,46 +4673,28 @@ a list of strings."
        entries))
     (_ (error "Invalid diary data: %S" datum))))
 
-(defun org-agenda--entry-from-log (date datum)
-  "Return agenda entry for DATE associated to log data.
+(defun org-agenda--entry-from-closed (date datum)
+  "Return agenda entry for DATE associated to closed data.
 
 DATE is a list of the form (MONTH DAY YEAR).  DATUM is a list of
-the form (ENTRY TYPE POS TIMESTAMP EXTRA HEADLINE LEVEL), see
-`org-agenda--closed-data', `org-agenda--clock-data' and
-`org-agenda--state-data' for details.
+the form (ENTRY closed POS TIMESTAMP nil HEADLINE LEVEL TODO).
+See `org-agenda--planning-data' for details.
 
 Throw `:skip' if no entry is associated to DATUM at DATE."
   (pcase datum
-    (`(,entry ,type ,pos ,timestamp ,extra ,headline ,level)
-     (goto-char pos)
-     (let* ((notes
-	     (cond
-	      ((not org-agenda-log-mode-add-notes) nil)
-	      ((eq type 'state)
-	       (and (looking-at ".*\\\\\n[ \t]*\\([^-\n \t].*?\\)[ \t]*$")
-		    (match-string 1)))
-	      ((eq type 'clock)
-	       (and (looking-at ".*\n[ \t]*-[ \t]+\\([^-\n \t].*?\\)[ \t]*$")
-		    (match-string 1)))
-	      (t nil)))
-	    (org-agenda-search-headline-for-time nil)
+    (`(,entry closed ,pos ,timestamp nil ,headline ,level ,todo)
+     (when (pcase-let ((`(,month ,day ,year) date))
+	     (not (string-match-p (format "\\`%d-%02d-%02d" year month day)
+				  timestamp)))
+       (throw :skip nil))
+     (let* ((org-agenda-search-headline-for-time nil)
 	    (marker (org-agenda-new-marker pos))
 	    (hdmarker (org-agenda-new-marker entry))
 	    (category (org-get-category))
 	    (tags (org-agenda--get-tags 'todo))
 	    (level (make-string (org-reduced-level level) ?\s))
-	    (item
-	     (org-agenda-format-item
-	      (pcase type
-		(`closed "Closed:    ")
-		(`state (format "State:     (%s)" extra))
-		(_ (format "Clocked:   (%s)" (or extra "-"))))
-	      (cond
-	       ((not notes) headline)
-	       ((string-match "[ \t]+\\(:[^ \n\t]*?:\\)[ \t]*$" headline)
-		(replace-match (format " - %s \\1" notes) nil nil headline 1))
-	       (t (concat headline " - " notes)))
-	      level category tags timestamp)))
+	    (item (org-agenda-format-item
+		   "Closed:    " headline level category tags timestamp)))
        (org-add-props item nil
 	 'date date
 	 'done-face 'org-agenda-done
@@ -4722,7 +4712,116 @@ Throw `:skip' if no entry is associated to DATUM at DATE."
 	 'priority 100000
 	 'type "closed"
 	 'undone-face 'org-warning)))
-    (_ (error "Invalid log data: %S" datum))))
+    (_ (error "Invalid closed data: %S" datum))))
+
+(defun org-agenda--entry-from-clock (date datum)
+  "Return agenda entry for DATE associated to clock data.
+
+DATE is a list of the form (MONTH DAY YEAR).  DATUM is a list of
+the form (ENTRY clock POSITION TIMESTAMP DURATION HEADLINE LEVEL).
+See `org-agenda--clock-data' for details.
+
+Throw `:skip' if no entry is associated to DATUM at DATE."
+  (pcase datum
+    (`(,entry clock ,pos (,clock-start . ,clock-end) ,duration ,headline ,level)
+     (let ((current (calendar-absolute-from-gregorian date))
+	   (start (org-agenda--timestamp-to-absolute clock-start))
+	   (end (and clock-end (org-agenda--timestamp-to-absolute clock-end))))
+       (when (or (< current start) (and end (> current end)))
+	 (throw :skip nil)))
+     (goto-char pos)
+     (let* ((notes
+	     (and org-agenda-log-mode-add-notes
+		  (looking-at ".*\n[ \t]*-[ \t]+\\([^-\n \t].*?\\)[ \t]*$")
+		  (match-string 1)))
+	    (org-agenda-search-headline-for-time nil)
+	    (marker (org-agenda-new-marker pos))
+	    (hdmarker (org-agenda-new-marker entry))
+	    (category (org-get-category entry))
+	    (tags (org-agenda--get-tags 'todo))
+	    (level (make-string (org-reduced-level level) ?\s))
+	    (time-string (if clock-end
+			     (format "\\[%s\\]--\\[%s\\]" clock-start clock-end)
+			   (format "\\[%s\\]" clock-start)))
+	    (item
+	     (org-agenda-format-item
+	      (format "Clocked:   (%s)" (or duration "-"))
+	      (cond
+	       ((not notes) headline)
+	       ((string-match "[ \t]+\\(:[^ \n\t]*?:\\)[ \t]*$" headline)
+		(replace-match (format " - %s \\1" notes) nil nil headline 1))
+	       (t (concat headline " - " notes)))
+	      level category tags time-string)))
+       (org-add-props item nil
+	 'date date
+	 'done-face 'org-agenda-done
+	 'face 'org-agenda-done
+	 'help-echo (format "mouse-2 or RET jump to Org file %S"
+			    (abbreviate-file-name
+			     (buffer-file-name (buffer-base-buffer))))
+	 'level level
+	 'mouse-face 'highlight
+	 'org-complex-heading-regexp org-complex-heading-regexp
+	 'org-hd-marker hdmarker
+	 'org-marker marker
+	 'org-not-done-regexp org-not-done-regexp
+	 'org-todo-regexp org-todo-regexp
+	 'priority 100000
+	 'type "closed"
+	 'undone-face 'org-warning)))
+    (_ (error "Invalid clock data: %S" datum))))
+
+(defun org-agenda--entry-from-state (date datum)
+  "Return agenda entry for DATE associated to state data.
+
+DATE is a list of the form (MONTH DAY YEAR).  DATUM is a list of
+the form (ENTRY state POSITION TIMESTAMP STATE HEADLINE LEVEL).  See
+`org-agenda--state-data' for details.
+
+Throw `:skip' if no entry is associated to DATUM at DATE."
+  (pcase datum
+    (`(,entry state ,pos ,timestamp ,state ,headline ,level)
+     (when (pcase-let ((`(,month ,day ,year) date))
+	     (not (string-match-p (format "\\`\\[%d-%02d-%02d" year month day)
+				  timestamp)))
+       (throw :skip nil))
+     (goto-char pos)
+     (let* ((notes (and org-agenda-log-mode-add-notes
+			(looking-at ".*\\\\\n[ \t]*\\([^-\n \t].*?\\)[ \t]*$")
+			(match-string 1)))
+	    (org-agenda-search-headline-for-time nil)
+	    (marker (org-agenda-new-marker pos))
+	    (hdmarker (org-agenda-new-marker entry))
+	    (category (org-get-category entry))
+	    (tags (org-agenda--get-tags 'todo))
+	    (level (make-string (org-reduced-level level) ?\s))
+	    (item
+	     (org-agenda-format-item
+	      (format "State:     (%s)" state)
+	      (cond
+	       ((not notes) headline)
+	       ((string-match "[ \t]+\\(:[^ \n\t]*?:\\)[ \t]*$" headline)
+		(replace-match (format " - %s \\1" notes) nil nil headline 1))
+	       (t (concat headline " - " notes)))
+	      level category tags)))
+       (org-add-props item nil
+	 'date date
+	 'done-face 'org-agenda-done
+	 'face 'org-agenda-done
+	 'help-echo (format "mouse-2 or RET jump to Org file %S"
+			    (abbreviate-file-name
+			     (buffer-file-name (buffer-base-buffer))))
+	 'level level
+	 'mouse-face 'highlight
+	 'org-complex-heading-regexp org-complex-heading-regexp
+	 'org-hd-marker hdmarker
+	 'org-marker marker
+	 'org-not-done-regexp org-not-done-regexp
+	 'org-todo-regexp org-todo-regexp
+	 'priority 100000
+	 'type "closed"
+	 'undone-face 'org-warning)))
+    (_ (error "Invalid state data: %S" datum))))
 
 (defun org-agenda--entry-from-range (date datum)
   "Return agenda entry for DATE associated to a time-stamp range.
@@ -6220,6 +6319,12 @@ keywords indicating which kind of entries should be extracted."
 	      (pcase-let ((`(,pos ,type . ,_) datum))
 		(goto-char pos)
 		(pcase type
+		  (`clock
+		   (push (org-agenda--entry-from-clock date datum)
+			 results))
+		  (`closed
+		   (push (org-agenda--entry-from-closed date datum)
+			 results))
 		  (`diary
 		   ;; Unlike other converters,
 		   ;; `org-agenda--entry-from-diary' returns a list of
@@ -6227,9 +6332,6 @@ keywords indicating which kind of entries should be extracted."
 		   (setq results
 			 (nconc (org-agenda--entry-from-diary date datum)
 				results)))
-		  ((or `clock `closed `state)
-		   (push (org-agenda--entry-from-log date datum)
-			 results))
 		  (`deadline
 		   ;; Store the entry position of the last displayed
 		   ;; deadline.  Some other transformers need this
@@ -6245,7 +6347,10 @@ keywords indicating which kind of entries should be extracted."
 		   (push (org-agenda--entry-from-scheduled
 			  date datum last-deadline hours?)
 			 results))
-		  ((or `inactive `timestamp)
+		  (`state
+		   (push (org-agenda--entry-from-state date datum)
+			 results))
+		  ((or `timestamp `inactive)
 		   (push (org-agenda--entry-from-timestamp
 			  date datum last-deadline)
 			 results))
