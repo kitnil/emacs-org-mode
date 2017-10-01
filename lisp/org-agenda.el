@@ -4731,7 +4731,7 @@ DATE is a list of the form (MONTH DAY YEAR).  DATUM is list of
 the form (ENTRY range POSITION (START . END) HEADLINE LEVEL TODO),
 see `org-agenda--timestamp-data' for details.
 
-Throw `:skip' if no entry is associated to DATA at DATE."
+Throw `:skip' if no entry is associated to DATUM at DATE."
   (pcase datum
     (`(,entry range ,pos (,range-start . ,range-end) ,headline ,level ,todo)
      (when (and org-agenda-skip-timestamp-if-done
@@ -5056,7 +5056,7 @@ DATE is a list of the form (MONTH DAY YEAR).  DATUM is a list of
 the form (POSITION todo HEADLINE LEVEL TODO), see
 `org-agenda--todo-data' for details.
 
-Throw `:skip' if no entry is associated to DATA at DATE."
+Throw `:skip' if no entry is associated to DATUM at DATE."
   (pcase datum
     (`(,pos todo ,headline ,level ,todo)
      ;; Check if we skip current TODO keyword.
