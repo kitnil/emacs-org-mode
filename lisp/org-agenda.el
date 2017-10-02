@@ -4363,9 +4363,9 @@ Return a list:
 
 ENTRY is the beginning of the relative heading.  TYPE is a symbol
 among `deadline', `scheduled' and `closed'.  POSITION is the
-position at the beginning of the planning line.  TIMESTAMP is the
-associated time-stamp.  HEADLINE is the headline text.  LEVEL is
-the number of stars."
+position at the beginning of TIMESTAMP, the the associated
+time-stamp.  HEADLINE is the headline text.  LEVEL is the number
+of stars.  TODO is the TODO keyword, or nil."
   (let ((result nil))
     (while (re-search-forward org-planning-line-re nil t)
       (when (save-excursion
@@ -4377,23 +4377,25 @@ the number of stars."
 	       (org-trim
 		(buffer-substring (match-end 1) (line-end-position 0))))
 	      (entry (line-beginning-position 0))
-	      (pos (line-beginning-position))
 	      (end (line-end-position)))
 	  (beginning-of-line)
 	  (save-excursion
 	    (when (re-search-forward org-closed-time-regexp end t)
 	      (push
-	       (list entry 'closed pos (match-string 1) nil title level todo)
+	       (list entry 'closed
+		     (match-beginning 1) (match-string 1) nil title level todo)
 	       result)))
 	  (save-excursion
 	    (when (re-search-forward org-deadline-time-regexp end t)
 	      (push
-	       (list entry 'deadline pos (match-string 1) nil title level todo)
+	       (list entry 'deadline
+		     (match-beginning 1) (match-string 1) nil title level todo)
 	       result)))
 	  (save-excursion
 	    (when (re-search-forward org-scheduled-time-regexp end t)
 	      (push
-	       (list entry 'scheduled pos (match-string 1) nil title level todo)
+	       (list entry 'scheduled
+		     (match-beginning 1) (match-string 1) nil title level todo)
 	       result)))))
       (forward-line))
     result))
