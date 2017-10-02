@@ -4087,26 +4087,29 @@ See the docstring of `org-read-date' for details.")
   "Hash table containing currently known agenda data.
 Keys are files' truenames, as returned by `file-truename'.")
 
-(defun org-agenda--file-data (file types)
-  "Return agenda-related data in FILE for TYPES.
+(defun org-agenda--file-data (location types)
+  "Return agenda-related data in LOCATION for TYPES.
 
-FILE is the path to a file to be checked for entries.  TYPES are
-symbols indicating which kind of entries should be extracted.
-For details about these, see the documentation of `org-diary'.
+LOCATION is the path to a file or a buffer to be checked for
+entries.  TYPES are symbols indicating which kind of entries
+should be extracted.  For details about these, see the
+documentation of `org-diary'.
 
-Throw an error if FILE doesn't exist or isn't an Org file."
-  (with-current-buffer (if (file-exists-p file)
-			   (let ((org-inhibit-startup t))
-			     (org-get-agenda-file-buffer file))
-			 (error "No such file %S" file))
+Throw an error if LOCATION doesn't exist or isn't an Org file."
+  (with-current-buffer (cond ((bufferp location) location)
+			     ((file-exists-p location)
+			      (let ((org-inhibit-startup t))
+				(org-get-agenda-file-buffer location)))
+			     (t (error "No such file %S" location)))
     (unless (derived-mode-p 'org-mode)
-      (error "Agenda file %S is not in `org-mode'" file))
+      (error "Agenda file %S is not in Org mode"
+	     (buffer-file-name (buffer-base-buffer))))
     ;; Cache parsed data.  Cache is cleared any time there is
     ;; a checksum mismatch with the contents of the buffer.  Moreover,
     ;; TODO keywords are the only agenda-related syntax that can
     ;; change without the buffer being altered.  Since checksum cannot
     ;; help, we need to also check list of TODO keywords.
-    (let* ((key (file-truename file))
+    (let* ((key (file-truename (buffer-file-name (buffer-base-buffer))))
 	   (cache
 	    (let ((store (gethash key org-agenda--data-cache))
 		  (checksum (sha1 (current-buffer))))
@@ -4210,7 +4213,7 @@ with file names as keys and items as values."
 	(org-check-agenda-file file)
 	(with-current-buffer (org-get-agenda-file-buffer file)
 	  (org-with-wide-buffer
-	   (let ((items (org-agenda--file-data file types))
+	   (let ((items (org-agenda--file-data (current-buffer) types))
 		 (start (if (eq org-agenda-restrict (current-buffer))
 			    org-agenda-restrict-begin
 			  (point-min)))
