@@ -6359,7 +6359,7 @@ keywords indicating which kind of entries should be extracted."
 		     (push (org-agenda--entry-from-todo date datum)
 			   results)))
 		  (type (error "Unknown agenda entry type: %S" type))))))
-	  results)))))
+	  (nreverse results))))))
 
 (defsubst org-em (x y list)
   "Is X or Y a member of LIST?"
@@ -7071,8 +7071,8 @@ You can also use this function as a filter, by returning nil for lines
 you don't want to have in the agenda at all.  For this application, you
 could bind the variable in the options section of a custom command.")
 
-(defun org-agenda-finalize-entries (list &optional type)
-  "Sort, limit and concatenate the LIST of agenda items.
+(defun org-agenda-finalize-entries (entries &optional type)
+  "Sort, limit and concatenate the ENTRIES of agenda items.
 The optional argument TYPE tells the agenda type."
   (let ((max-effort (cond ((listp org-agenda-max-effort)
 			   (cdr (assoc type org-agenda-max-effort)))
@@ -7086,27 +7086,26 @@ The optional argument TYPE tells the agenda type."
 	(max-entries (cond ((listp org-agenda-max-entries)
 			    (cdr (assoc type org-agenda-max-entries)))
 			   (t org-agenda-max-entries))))
-    (when org-agenda-before-sorting-filter-function
-      (setq list
-	    (delq nil
-		  (mapcar
-		   org-agenda-before-sorting-filter-function list))))
-    (setq list (mapcar 'org-agenda-highlight-todo list)
-	  list (mapcar 'identity (sort list 'org-entries-lessp)))
+    (setq entries
+	  (sort (if (functionp org-agenda-before-sorting-filter-function)
+		    (delq nil (mapcar org-agenda-before-sorting-filter-function
+				      entries))
+		  entries)
+		#'org-agenda--entries-less-p))
     (when max-effort
-      (setq list (org-agenda-limit-entries
-		  list 'effort-minutes max-effort
-		  (lambda (e) (or e (if org-sort-agenda-noeffort-is-high
-					32767 -1))))))
+      (setq entries (org-agenda-limit-entries
+		     entries 'effort-minutes max-effort
+		     (lambda (e)
+		       (or e (if org-sort-agenda-noeffort-is-high 32767 -1))))))
     (when max-todo
-      (setq list (org-agenda-limit-entries list 'todo-state max-todo)))
+      (setq entries (org-agenda-limit-entries entries 'todo-state max-todo)))
     (when max-tags
-      (setq list (org-agenda-limit-entries list 'tags max-tags)))
+      (setq entries (org-agenda-limit-entries entries 'tags max-tags)))
     (when max-entries
-      (setq list (org-agenda-limit-entries list 'org-hd-marker max-entries)))
+      (setq entries (org-agenda-limit-entries entries 'org-hd-marker max-entries)))
     (when (and org-agenda-dim-blocked-tasks org-blocker-hook)
-      (setq list (mapcar #'org-agenda--mark-blocked-entry list)))
-    (mapconcat 'identity list "\n")))
+      (setq entries (mapcar #'org-agenda--mark-blocked-entry entries)))
+    (mapconcat #'org-agenda-highlight-todo entries "\n")))
 
 (defun org-agenda-limit-entries (list prop limit &optional fn)
   "Limit the number of agenda entries."
@@ -7312,65 +7311,46 @@ their type."
     (cond ((and ha (not hb)) -1)
 	  ((and (not ha) hb) +1))))
 
-(defun org-entries-lessp (a b)
-  "Predicate for sorting agenda entries."
-  ;; The following variables will be used when the form is evaluated.
-  ;; So even though the compiler complains, keep them.
-  (let* ((ss org-agenda-sorting-strategy-selected)
-	 (timestamp-up    (and (org-em 'timestamp-up 'timestamp-down ss)
-			       (org-cmp-ts a b "")))
-	 (timestamp-down  (if timestamp-up (- timestamp-up) nil))
-	 (scheduled-up    (and (org-em 'scheduled-up 'scheduled-down ss)
-			       (org-cmp-ts a b "scheduled")))
-	 (scheduled-down  (if scheduled-up (- scheduled-up) nil))
-	 (deadline-up     (and (org-em 'deadline-up 'deadline-down ss)
-			       (org-cmp-ts a b "deadline")))
-	 (deadline-down   (if deadline-up (- deadline-up) nil))
-	 (tsia-up         (and (org-em 'tsia-up 'tsia-down ss)
-			       (org-cmp-ts a b "timestamp_ia")))
-	 (tsia-down       (if tsia-up (- tsia-up) nil))
-	 (ts-up           (and (org-em 'ts-up 'ts-down ss)
-			       (org-cmp-ts a b "timestamp")))
-	 (ts-down         (if ts-up (- ts-up) nil))
-	 (time-up         (and (org-em 'time-up 'time-down ss)
-			       (org-cmp-time a b)))
-	 (time-down       (if time-up (- time-up) nil))
-	 (stats-up        (and (org-em 'stats-up 'stats-down ss)
-			       (org-cmp-values a b 'org-stats)))
-	 (stats-down      (if stats-up (- stats-up) nil))
-	 (priority-up     (and (org-em 'priority-up 'priority-down ss)
-			       (org-cmp-values a b 'priority)))
-	 (priority-down   (if priority-up (- priority-up) nil))
-	 (effort-up       (and (org-em 'effort-up 'effort-down ss)
-			       (org-cmp-effort a b)))
-	 (effort-down     (if effort-up (- effort-up) nil))
-	 (category-up     (and (or (org-em 'category-up 'category-down ss)
-				   (memq 'category-keep ss))
-			       (org-cmp-category a b)))
-	 (category-down   (if category-up (- category-up) nil))
-	 (category-keep   (if category-up +1 nil))
-	 (tag-up          (and (org-em 'tag-up 'tag-down ss)
-			       (org-cmp-tag a b)))
-	 (tag-down        (if tag-up (- tag-up) nil))
-	 (todo-state-up   (and (org-em 'todo-state-up 'todo-state-down ss)
-			       (org-cmp-todo-state a b)))
-	 (todo-state-down (if todo-state-up (- todo-state-up) nil))
-	 (habit-up        (and (org-em 'habit-up 'habit-down ss)
-			       (org-cmp-habit-p a b)))
-	 (habit-down      (if habit-up (- habit-up) nil))
-	 (alpha-up        (and (org-em 'alpha-up 'alpha-down ss)
-			       (org-cmp-alpha a b)))
-	 (alpha-down      (if alpha-up (- alpha-up) nil))
-	 (need-user-cmp   (org-em 'user-defined-up 'user-defined-down ss))
-	 user-defined-up user-defined-down)
-    (if (and need-user-cmp org-agenda-cmp-user-defined
-	     (functionp org-agenda-cmp-user-defined))
-	(setq user-defined-up
-	      (funcall org-agenda-cmp-user-defined a b)
-	      user-defined-down (if user-defined-up (- user-defined-up) nil)))
-    (cdr (assoc
-	  (eval (cons 'or org-agenda-sorting-strategy-selected))
-	  '((-1 . t) (1 . nil) (nil . nil))))))
+(defun org-agenda--entries-less-p (a b)
+  "Return non-nil if entry A should appear before entry B in agenda.
+A and B are strings, as produced by `org-agenda-day-entries'.  "
+  (eq -1
+      (cl-some
+       (lambda (strategy)
+	 (pcase strategy
+	   (`alpha-down (org-cmp-alpha b a))
+	   (`alpha-up (org-cmp-alpha a b))
+	   (`category-down (org-cmp-category b a))
+	   (`category-keep (and (org-cmp-category a b) +1))
+	   (`category-up (org-cmp-category a b))
+	   (`deadline-down (org-cmp-ts b a "deadline"))
+	   (`deadline-up (org-cmp-ts a b "deadline"))
+	   (`effort-down (org-cmp-effort b a))
+	   (`effort-up (org-cmp-effort a b))
+	   (`habit-down (org-cmp-habit-p b a))
+	   (`habit-up (org-cmp-habit-p a b))
+	   (`priority-down (org-cmp-values b a 'priority))
+	   (`priority-up (org-cmp-values a b 'priority))
+	   (`scheduled-down (org-cmp-ts b a "scheduled"))
+	   (`scheduled-up (org-cmp-ts a b "scheduled"))
+	   (`stats-down (org-cmp-values b a 'org-stats))
+	   (`stats-up (org-cmp-values a b 'org-stats))
+	   (`tag-down (org-cmp-tag b a))
+	   (`tag-up (org-cmp-tag a b))
+	   (`time-down (org-cmp-time b a))
+	   (`time-up (org-cmp-time a b))
+	   (`timestamp-down (org-cmp-ts b a ""))
+	   (`timestamp-up (org-cmp-ts a b ""))
+	   (`todo-state-down (org-cmp-todo-state b a))
+	   (`todo-state-up (org-cmp-todo-state a b))
+	   (`ts-down (org-cmp-ts b a "timestamp"))
+	   (`ts-up (org-cmp-ts a b "timestamp"))
+	   (`tsia-down (org-cmp-ts b a "timestamp_ia"))
+	   (`tsia-up (org-cmp-ts a b "timestamp_ia"))
+	   (`user-defined-down (funcall org-agenda-cmp-user-defined b a))
+	   (`user-defined-up (funcall org-agenda-cmp-user-defined a b))
+	   (_ (user-error "Invalid sorting strategy: %S" strategy))))
+       org-agenda-sorting-strategy-selected)))
 
 ;;; Agenda restriction lock
 
