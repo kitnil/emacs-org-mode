@@ -4302,10 +4302,13 @@ stars."
 
 (defun org-agenda--diary-data ()
   "Extract S-exp diary data from current buffer, starting from point.
-Return a list of (POSITION diary SEXP TEXT) elements.  POSITION
-is the beginning position of the diary entry.  SEXP is the diary
-S-exp, as a string.  TEXT is the text following the S-exp, as
-a string."
+Return a list:
+
+  (POSITION diary SEXP TEXT)
+
+POSITION is the beginning position of the diary entry.  SEXP is
+the diary S-exp, as a string.  TEXT is the text following the
+S-exp, as a string."
   (let ((result nil))
     (while (re-search-forward "^%%(" nil t)
       (forward-char -1)
@@ -4320,6 +4323,7 @@ a string."
 
 (defun org-agenda--inactive-data ()
   "Extract plain inactive timestamp data from current buffer, from point.
+
 Return a list:
 
   (ENTRY inactive POSITION TIMESTAMP HEADLINE LEVEL TODO)
@@ -4349,6 +4353,7 @@ the number of stars.  TODO is the keyword, or nil."
 
 (defun org-agenda--planning-data ()
   "Extract planning data from current buffer, starting from point.
+
 Return a list:
 
   (ENTRY TYPE POSITION TIMESTAMP nil HEADLINE LEVEL TODO)
