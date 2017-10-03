@@ -4087,6 +4087,12 @@ See the docstring of `org-read-date' for details.")
   "Hash table containing currently known agenda data.
 Keys are files' truenames, as returned by `file-truename'.")
 
+(defsubst org-agenda--invalidate-datum (datum)
+  "Mark DATUM as invalid.
+When invalid, DATUM is no longer processed in subsequent cache
+re-uses."
+  (setf (nth 1 datum) 'invalid))
+
 (defun org-agenda--file-data (location types)
   "Return agenda-related data in LOCATION for TYPES.
 
@@ -4244,6 +4250,8 @@ with file names as keys and items as values."
 			     (and org-agenda-skip-comment-trees
 				  (get-text-property pos :org-comment)))
 		     (throw :skip nil))
+		   ;; DATA invalidated in a previous run.
+		   (when (eq type 'invalid) (throw :skip nil))
 		   ;; Outside restricted range.  Store everything
 		   ;; collected so far and bail out.
 		   (when (>= pos end)
@@ -4284,23 +4292,24 @@ a string.  HEADLINE is the headline text.  LEVEL is the number of
 stars."
   (let ((result nil))
     (while (re-search-forward org-clock-line-re nil t)
-      (let ((element (org-element-at-point)))
-	(when (eq 'clock (org-element-type element))
-	  (let ((time (progn
-			(skip-chars-forward " \t")
-			(and (looking-at org-tsr-regexp-both)
-			     (cons (match-string 1) (match-string 3))))))
-	    (when time
-	      (save-excursion
-		(re-search-backward org-todo-line-regexp nil t)
-		(let ((duration (org-element-property :duration element))
-		      (begin (org-element-property :begin element))
-		      (level (- (match-end 1) (match-beginning 1)))
-		      (headline
-		       (org-trim
-			(buffer-substring (match-end 1) (line-end-position)))))
-		  (push (list (point) 'clock begin time duration headline level)
-			result))))))))
+      (let ((begin (line-beginning-position))
+	    (time (progn
+		    (skip-chars-forward " \t")
+		    (and (looking-at org-tsr-regexp-both)
+			 (cons (match-string 1) (match-string 3)))))
+	    (duration (and (search-forward " => " (line-end-position) t)
+			   (progn (skip-chars-forward " \t")
+				  (looking-at "\\(\\S-+\\)[ \t]*$"))
+			   (match-string 1))))
+	(when time
+	  (save-excursion
+	    (re-search-backward org-todo-line-regexp nil t)
+	    (let ((level (- (match-end 1) (match-beginning 1)))
+		  (headline
+		   (org-trim
+		    (buffer-substring (match-end 1) (line-end-position)))))
+	      (push (list (point) 'clock begin time duration headline level)
+		    result))))))
     result))
 
 (defun org-agenda--diary-data ()
@@ -4339,10 +4348,7 @@ the number of stars.  TODO is the keyword, or nil."
     (while (re-search-forward org-ts-regexp-inactive nil t)
       (let ((pos (match-beginning 0))
 	    (timestamp (match-string 0)))
-	(unless (or (org-at-planning-p)
-		    (org-match-line "[ \t]*# ")
-		    (org-in-src-block-p t)
-		    (org-at-clock-log-p))
+	(unless (org-at-planning-p)
 	  (save-excursion
 	    (re-search-backward org-todo-line-regexp nil t)
 	    (let ((todo (match-string 2))
@@ -4450,10 +4456,7 @@ TODO is the keyword, or nil."
       (let ((pos (match-beginning 0))
 	    (timestamp nil)
 	    (type nil))
-	(unless (save-match-data
-		  (or (org-at-planning-p)
-		      (org-match-line "[ \t]*# ")
-		      (org-in-src-block-p t)))
+	(unless (save-match-data (org-at-planning-p))
 	  (goto-char pos)
 	  ;; Distinguish between plain time-stamps and time-stamp
 	  ;; ranges.
@@ -4515,6 +4518,10 @@ Throw `:skip' if no entry is associated to DATUM at DATE."
        (when (or (< current start) (and end (> current end)))
 	 (throw :skip nil)))
      (goto-char pos)
+     ;; Discard false positives.
+     (unless (eq 'clock (org-element-type (org-element-at-point)))
+       (org-agenda--invalidate-datum datum)
+       (throw :skip nil))
      (let* ((notes
 	     (and org-agenda-log-mode-add-notes
 		  (looking-at ".*\n[ \t]*-[ \t]+\\([^-\n \t].*?\\)[ \t]*$")
@@ -4799,6 +4806,11 @@ Throw `:skip' if no entry is associated to DATUM at DATE."
 	   (end (org-agenda--timestamp-to-absolute range-end)))
        ;; Discard range if DATE is outside.
        (when (or (< current start) (> current end))
+	 (throw :skip nil))
+       ;; Discard false positives.
+       (when (or (org-match-line "[ \t]*# ")
+		 (org-in-src-block-p t))
+	 (org-agenda--invalidate-datum datum)
 	 (throw :skip nil))
        ;; Format entry as a return value.
        (let* ((category (org-get-category pos))
@@ -5087,6 +5099,13 @@ Throw `:skip' if no entry is associated to DATUM at DATE."
        ;; Possibly skip DONE tasks.
        (when (and org-agenda-skip-timestamp-if-done
 		  (member todo org-done-keywords))
+	 (throw :skip nil))
+       ;; Discard false positives.
+       (when (or (org-match-line "[ \t]*# ")
+		 (org-in-src-block-p t)
+		 (and (eq subtype 'inactive)
+		      (org-match-line org-clock-line-re)))
+	 (org-agenda--invalidate-datum datum)
 	 (throw :skip nil))
        (pcase subtype
 	 (`sexp
@@ -6350,6 +6369,8 @@ keywords indicating which kind of entries should be extracted."
 		   (setq last-deadline pos)
 		   (push (org-agenda--entry-from-deadline date datum hours?)
 			 results))
+		  ;; Marked as invalid: ignore it.
+		  (`invalid nil)
 		  (`range
 		   (push (org-agenda--entry-from-range date datum)
 			 results))
