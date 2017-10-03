@@ -4161,7 +4161,7 @@ Throw an error if LOCATION doesn't exist or isn't an Org file."
 	       (when (re-search-forward org-outline-regexp-bol nil t)
 		 (beginning-of-line)
 		 (pcase type
-		   ((or `:closed `:deadline `:scheduled)
+		   ((or :closed :deadline :scheduled)
 		    ;; All three types are collect within the same
 		    ;; function for efficiency.  Once done, dispatch
 		    ;; each item according to its type.
@@ -4177,19 +4177,19 @@ Throw an error if LOCATION doesn't exist or isn't an Org file."
 		      (push (cons :closed closed) cache)
 		      (push (cons :deadline deadline) cache)
 		      (push (cons :scheduled scheduled) cache)))
-		   (`:clock
+		   (:clock
 		    (push (cons :clock (org-agenda--clock-data))
 			  cache))
-		   (`:inactive
+		   (:inactive
 		    (push (cons :inactive (org-agenda--inactive-data))
 			  cache))
-		   (`:state
+		   (:state
 		    (push (cons :state (org-agenda--state-data))
 			  cache))
-		   (`:timestamp
+		   (:timestamp
 		    (push (cons :timestamp (org-agenda--timestamp-data))
 			  cache))
-		   (`:todo
+		   (:todo
 		    (push (cons :todo (org-agenda--todo-data))
 			  cache))
 		   (_ (error "Unknown entry type: %S" type)))))
